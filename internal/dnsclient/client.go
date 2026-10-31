@@ -13,22 +13,20 @@ import (
 
 const defaultTimeout = 3 * time.Second
 
-// Client sends DNS queries over UDP.
+// Client sends DNS queries over UDP and TCP.
 type Client struct {
 	timeout time.Duration
 }
 
-// New creates a UDP DNS client. A non-positive timeout uses the default.
+// New creates a DNS client. A non-positive timeout uses the default.
 func New(timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-
 	return &Client{timeout: timeout}
 }
 
-// Query sends one DNS question to server and returns the response and round-trip time.
-// If server omits a port, the standard DNS port 53 is used.
+// Query sends one DNS question and retries over TCP if the UDP response is truncated.
 func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (*dns.Msg, time.Duration, error) {
 	if ctx == nil {
 		return nil, 0, fmt.Errorf("query context must not be nil")
@@ -36,12 +34,10 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
 	}
-
 	resolver, err := normalizeServer(server)
 	if err != nil {
 		return nil, 0, err
 	}
-
 	name = strings.TrimSpace(name)
 	if _, ok := dns.IsDomainName(name); !ok {
 		return nil, 0, fmt.Errorf("invalid DNS name %q", name)
@@ -52,22 +48,42 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(name), qtype)
+	started := time.Now()
 
-	dnsClient := &dns.Client{
-		Net:     "udp",
-		Timeout: c.timeout,
+	response, err := c.exchange(ctx, resolver, message, "udp")
+	if err != nil {
+		return nil, time.Since(started), fmt.Errorf("DNS UDP query to %s failed: %w", resolver, err)
 	}
+	if response == nil {
+		return nil, time.Since(started), fmt.Errorf("DNS UDP query to %s returned an empty response", resolver)
+	}
+	if response.Truncated {
+		if err := ctx.Err(); err != nil {
+			return nil, time.Since(started), err
+		}
+		response, err = c.exchange(ctx, resolver, message, "tcp")
+		if err != nil {
+			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s failed: %w", resolver, err)
+		}
+		if response == nil {
+			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s returned an empty response", resolver)
+		}
+	}
+	return response, time.Since(started), nil
+}
 
+func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg, network string) (*dns.Msg, error) {
+	dnsClient := &dns.Client{Net: network, Timeout: c.timeout}
 	conn, err := dnsClient.DialContext(ctx, resolver)
 	if err != nil {
-		return nil, 0, fmt.Errorf("connect to DNS resolver %s: %w", resolver, err)
+		return nil, fmt.Errorf("connect: %w", err)
 	}
 	defer conn.Close()
 
 	stopCancellation := make(chan struct{})
-	cancellationWatcherDone := make(chan struct{})
+	watcherDone := make(chan struct{})
 	go func() {
-		defer close(cancellationWatcherDone)
+		defer close(watcherDone)
 		select {
 		case <-ctx.Done():
 			_ = conn.SetDeadline(time.Now())
@@ -75,21 +91,16 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 		}
 	}()
 
-	response, rtt, err := dnsClient.ExchangeWithConnContext(ctx, message, conn)
+	response, _, exchangeErr := dnsClient.ExchangeWithConnContext(ctx, message, conn)
 	close(stopCancellation)
-	<-cancellationWatcherDone
-
+	<-watcherDone
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, rtt, ctxErr
+		return nil, ctxErr
 	}
-	if err != nil {
-		return nil, rtt, fmt.Errorf("DNS UDP query to %s failed: %w", resolver, err)
+	if exchangeErr != nil {
+		return nil, exchangeErr
 	}
-	if response == nil {
-		return nil, rtt, fmt.Errorf("DNS UDP query to %s returned an empty response", resolver)
-	}
-
-	return response, rtt, nil
+	return response, nil
 }
 
 func normalizeServer(server string) (string, error) {
@@ -97,11 +108,9 @@ func normalizeServer(server string) (string, error) {
 	if server == "" {
 		return "", fmt.Errorf("resolver address must not be empty")
 	}
-
 	if ip := net.ParseIP(server); ip != nil {
 		return net.JoinHostPort(server, "53"), nil
 	}
-
 	host, port, err := net.SplitHostPort(server)
 	if err != nil {
 		if strings.Contains(server, ":") {
@@ -112,11 +121,9 @@ func normalizeServer(server string) (string, error) {
 	if host == "" {
 		return "", fmt.Errorf("resolver host must not be empty")
 	}
-
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
 		return "", fmt.Errorf("invalid resolver port %q", port)
 	}
-
 	return net.JoinHostPort(host, strconv.Itoa(portNumber)), nil
 }
