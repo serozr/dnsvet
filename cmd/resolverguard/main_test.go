@@ -110,6 +110,26 @@ func TestParseQueryOptionsRejectsInvalidArguments(t *testing.T) {
 	}
 }
 
+func TestFormatAnswer(t *testing.T) {
+	tests := []struct { name, rr string; want []string }{
+		{name: "A", rr: "example.test. 60 IN A 192.0.2.25", want: []string{"example.test.", "60", "A", "192.0.2.25"}},
+		{name: "AAAA", rr: "example.test. 120 IN AAAA 2001:db8::1", want: []string{"AAAA", "2001:db8::1"}},
+		{name: "MX", rr: "example.test. 300 IN MX 10 mail.example.test.", want: []string{"MX", "10", "mail.example.test."}},
+		{name: "TXT", rr: "example.test. 300 IN TXT \"hello\" \"world\"", want: []string{"TXT", "hello world"}},
+		{name: "CNAME", rr: "www.example.test. 60 IN CNAME example.test.", want: []string{"CNAME", "example.test."}},
+		{name: "SOA", rr: "example.test. 3600 IN SOA ns.example.test. hostmaster.example.test. 2026110101 3600 900 604800 300", want: []string{"SOA", "mname=ns.example.test.", "rname=hostmaster.example.test.", "serial=2026110101"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rr, err := dns.NewRR(test.rr)
+			if err != nil { t.Fatalf("dns.NewRR() error = %v", err) }
+			got := formatAnswer(rr)
+			for _, expected := range test.want {
+				if !strings.Contains(got, expected) { t.Errorf("formatAnswer() = %q, want it to contain %q", got, expected) }
+			}
+		})
+	}
+}
 func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
