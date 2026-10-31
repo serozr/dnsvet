@@ -89,21 +89,13 @@ func TestQueryUDPReturnsDNSResponse(t *testing.T) {
 	}
 }
 
-func TestQueryAddsStandardPortWhenOmitted(t *testing.T) {
-	server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
-		response := new(dns.Msg)
-		response.SetReply(request)
-		return response
-	})
-
-	host, _, err := net.SplitHostPort(server)
+func TestNormalizeServerAddsStandardPortWhenOmitted(t *testing.T) {
+	got, err := normalizeServer("192.0.2.53")
 	if err != nil {
-		t.Fatalf("split test server address: %v", err)
+		t.Fatalf("normalizeServer() error = %v", err)
 	}
-
-	_, _, err = New(time.Second).Query(context.Background(), host, "example.test", dns.TypeA)
-	if err != nil {
-		t.Fatalf("Query() with implicit port failed: %v", err)
+	if got != "192.0.2.53:53" {
+		t.Fatalf("normalizeServer() = %q, want %q", got, "192.0.2.53:53")
 	}
 }
 
