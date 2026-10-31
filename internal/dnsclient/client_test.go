@@ -113,7 +113,7 @@ func TestQueryTimeout(t *testing.T) {
 	})
 
 	started := time.Now()
-	_, _, err := New(40 * time.Millisecond).Query(context.Background(), server, "timeout.test", dns.TypeA)
+	_, _, err := New(40*time.Millisecond).Query(context.Background(), server, "timeout.test", dns.TypeA)
 	if err == nil {
 		t.Fatal("Query() error = nil, want timeout")
 	}
@@ -135,7 +135,7 @@ func TestQueryContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	_, _, err := New(2 * time.Second).Query(ctx, server, "cancel.test", dns.TypeA)
+	_, _, err := New(2*time.Second).Query(ctx, server, "cancel.test", dns.TypeA)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Query() error = %v, want context.Canceled", err)
 	}
