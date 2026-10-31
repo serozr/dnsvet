@@ -76,7 +76,12 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), options.timeout*2)
 	defer cancel()
 
-	response, rtt, err := dnsclient.New(options.timeout).Query(ctx, options.server, options.domain, options.qtype)
+	resolver, err := dnsclient.NormalizeServer(options.server)
+	if err != nil {
+		fmt.Fprintf(stderr, "DNS query failed: %v\\n", err)
+		return 1
+	}
+	response, elapsed, err := dnsclient.New(options.timeout).Query(ctx, resolver, options.domain, options.qtype)
 	if err != nil {
 		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1

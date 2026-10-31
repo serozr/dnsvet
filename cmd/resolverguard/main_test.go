@@ -207,7 +207,7 @@ func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run() exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	for _, expected := range []string{"Resolver:", "example.test. A", "NOERROR", "192.0.2.25"} {
+	for _, expected := range []string{"Resolver: " + packetConn.LocalAddr().String(), "example.test. A", "NOERROR", "Elapsed:", "192.0.2.25"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Fatalf("query output %q does not contain %q", stdout.String(), expected)
 		}

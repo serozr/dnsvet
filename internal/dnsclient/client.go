@@ -34,7 +34,7 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 	if err := ctx.Err(); err != nil {
 		return nil, 0, err
 	}
-	resolver, err := normalizeServer(server)
+	resolver, err := NormalizeServer(server)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -68,6 +68,9 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 		if response == nil {
 			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s returned an empty response", resolver)
 		}
+	}
+	if err := validateResponseQuestion(response, message.Question[0]); err != nil {
+		return nil, time.Since(started), err
 	}
 	return response, time.Since(started), nil
 }
@@ -103,6 +106,20 @@ func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg
 	return response, nil
 }
 
+func validateResponseQuestion(response *dns.Msg, expected dns.Question) error {
+	if len(response.Question) != 1 {
+		return fmt.Errorf("DNS response contains %d questions, want exactly 1", len(response.Question))
+	}
+	actual := response.Question[0]
+	if !strings.EqualFold(actual.Name, expected.Name) ||
+		actual.Qtype != expected.Qtype || actual.Qclass != expected.Qclass {
+		return fmt.Errorf("DNS response question does not match request: got %s %s class %d, want %s %s class %d",
+			actual.Name, dns.TypeToString[actual.Qtype], actual.Qclass,
+			expected.Name, dns.TypeToString[expected.Qtype], expected.Qclass)
+	}
+	return nil
+}
+
 func validateDNSName(name string) error {
 	if _, ok := dns.IsDomainName(name); !ok {
 		return fmt.Errorf("invalid DNS name %q", name)
@@ -119,7 +136,7 @@ func validateDNSName(name string) error {
 	return nil
 }
 
-func normalizeServer(server string) (string, error) {
+func NormalizeServer(server string) (string, error) {
 	server = strings.TrimSpace(server)
 	if server == "" {
 		return "", fmt.Errorf("resolver address must not be empty")

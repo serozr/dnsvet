@@ -245,12 +245,42 @@ func TestNewUsesDefaultTimeout(t *testing.T) {
 	}
 }
 
+func TestQueryRejectsMismatchedResponseQuestion(t *testing.T) {
+	tests := []struct {
+		name string
+		question dns.Question
+	}{
+		{
+			name: "different name",
+			question: dns.Question{Name: "other.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET},
+		},
+		{
+			name: "different type",
+			question: dns.Question{Name: "expected.test.", Qtype: dns.TypeAAAA, Qclass: dns.ClassINET},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
+				response := new(dns.Msg)
+				response.SetReply(request)
+				response.Question[0] = test.question
+				return response
+			})
+			_, _, err := New(time.Second).Query(context.Background(), server, "expected.test", dns.TypeA)
+			if err == nil || !strings.Contains(err.Error(), "does not match request") {
+				t.Fatalf("Query() error = %v, want mismatched question error", err)
+			}
+		})
+	}
+}
+
 func TestNormalizeServerAddsStandardPortWhenOmitted(t *testing.T) {
-	got, err := normalizeServer("192.0.2.53")
+	got, err := NormalizeServer("192.0.2.53")
 	if err != nil {
-		t.Fatalf("normalizeServer() error = %v", err)
+		t.Fatalf("NormalizeServer() error = %v", err)
 	}
 	if got != "192.0.2.53:53" {
-		t.Fatalf("normalizeServer() = %q, want %q", got, "192.0.2.53:53")
+		t.Fatalf("NormalizeServer() = %q, want %q", got, "192.0.2.53:53")
 	}
 }
