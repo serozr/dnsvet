@@ -99,6 +99,7 @@ func TestParseQueryOptionsRejectsInvalidArguments(t *testing.T) {
 		{name: "missing server value", args: []string{"example.com", "--server"}},
 		{name: "unknown option", args: []string{"example.com", "--unknown"}},
 		{name: "unknown record type", args: []string{"example.com", "--type", "INVALID"}},
+		{name: "zone transfer type is not allowed", args: []string{"example.com", "--type", "AXFR"}},
 		{name: "invalid timeout", args: []string{"example.com", "--timeout", "0s"}},
 	}
 	for _, test := range tests {
@@ -164,6 +165,20 @@ func TestFormatAnswer(t *testing.T) {
 		})
 	}
 }
+func TestRunQueryHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"query", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "Usage: resolverguard query") {
+		t.Fatalf("query help output = %q, want usage", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
 func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -204,7 +219,7 @@ func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 
 func TestRunQueryReportsDNSClientErrors(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"query", ""}, &stdout, &stderr)
+	code := run([]string{"query", "", "--server", "127.0.0.1:1"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
 	}
