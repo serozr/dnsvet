@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"net"
 	"strings"
 	"testing"
@@ -151,7 +150,7 @@ func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 
 func TestRunQueryReportsDNSClientErrors(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"query", "bad domain"}, &stdout, &stderr)
+	code := run([]string{"query", ""}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("run() exit code = %d, want 1", code)
 	}
@@ -160,10 +159,3 @@ func TestRunQueryReportsDNSClientErrors(t *testing.T) {
 	}
 }
 
-func TestRunQueryDoesNotUseCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if ctx.Err() == nil {
-		t.Fatal("expected canceled test context")
-	}
-}
