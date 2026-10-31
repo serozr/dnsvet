@@ -1,0 +1,15 @@
+.DS_Store
+Thumbs.db
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+dist/
+build/
+bin/
+.idea/
+.vscode/
