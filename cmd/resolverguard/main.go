@@ -94,7 +94,7 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		rcode = strconv.Itoa(response.Rcode)
 	}
 	fmt.Fprintf(stdout, "Response: %s (%d)\n", rcode, response.Rcode)
-	fmt.Fprintf(stdout, "RTT: %s\n", rtt.Round(time.Microsecond))
+	fmt.Fprintf(stdout, "RTT: %s\n", elapsed.Round(time.Microsecond))
 
 	if len(response.Answer) == 0 {
 		fmt.Fprintln(stdout, "Answers: none")
