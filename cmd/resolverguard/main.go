@@ -59,14 +59,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func runQuery(args []string, stdout, stderr io.Writer) int {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			printQueryUsage(stdout)
+			return 0
+		}
+	}
+
 	options, err := parseQueryOptions(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "query: %v\n", err)
-		fmt.Fprintln(stderr, "Usage: resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+		printQueryUsage(stderr)
 		return 2
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), options.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), options.timeout*2)
 	defer cancel()
 
 	response, rtt, err := dnsclient.New(options.timeout).Query(ctx, options.server, options.domain, options.qtype)
@@ -127,6 +134,23 @@ func formatAnswer(record dns.RR) string {
 	}
 }
 
+
+func isSupportedQueryType(qtype uint16) bool {
+	switch qtype {
+	case dns.TypeA, dns.TypeAAAA, dns.TypeCNAME, dns.TypeMX, dns.TypeNS,
+		dns.TypePTR, dns.TypeSOA, dns.TypeSRV, dns.TypeTXT, dns.TypeCAA,
+		dns.TypeDS, dns.TypeDNSKEY, dns.TypeRRSIG, dns.TypeNSEC, dns.TypeNSEC3:
+		return true
+	default:
+		return false
+	}
+}
+
+func printQueryUsage(w io.Writer) {
+	fmt.Fprintln(w, "Usage: resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "Supported types: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, CAA, DS, DNSKEY, RRSIG, NSEC, NSEC3")
+}
+
 func parseQueryOptions(args []string) (queryOptions, error) {
 	options := queryOptions{
 		server:  "1.1.1.1",
@@ -159,7 +183,7 @@ func parseQueryOptions(args []string) (queryOptions, error) {
 				value = args[i]
 			}
 			qtype, ok := dns.StringToType[strings.ToUpper(value)]
-			if !ok {
+			if !ok || !isSupportedQueryType(qtype) {
 				return options, fmt.Errorf("unsupported DNS record type %q", value)
 			}
 			options.qtype = qtype
