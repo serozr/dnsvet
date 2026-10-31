@@ -39,8 +39,8 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 		return nil, 0, err
 	}
 	name = strings.TrimSpace(name)
-	if _, ok := dns.IsDomainName(name); !ok {
-		return nil, 0, fmt.Errorf("invalid DNS name %q", name)
+	if err := validateDNSName(name); err != nil {
+		return nil, 0, err
 	}
 	if qtype == 0 {
 		return nil, 0, fmt.Errorf("DNS question type must not be zero")
@@ -101,6 +101,23 @@ func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg
 		return nil, exchangeErr
 	}
 	return response, nil
+}
+
+
+func validateDNSName(name string) error {
+	if _, ok := dns.IsDomainName(name); !ok {
+		return fmt.Errorf("invalid DNS name %q", name)
+	}
+	for _, character := range name {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '-' || character == '_' || character == '.' {
+			continue
+		}
+		return fmt.Errorf("invalid DNS name %q: unsupported character %q", name, character)
+	}
+	return nil
 }
 
 func normalizeServer(server string) (string, error) {
