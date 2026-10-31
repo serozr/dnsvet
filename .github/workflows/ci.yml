@@ -22,11 +22,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Normalize checkout line endings
+        shell: bash
+        run: |
+          git config core.autocrlf false
+          git checkout-index --force --all
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Check formatting
         shell: bash
@@ -59,6 +68,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Test with race detector
         run: go test -race ./...
