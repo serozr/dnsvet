@@ -91,9 +91,40 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 
 	fmt.Fprintln(stdout, "Answers:")
 	for _, answer := range response.Answer {
-		fmt.Fprintf(stdout, "  %s\n", answer)
+		fmt.Fprintf(stdout, "  %s\n", formatAnswer(answer))
 	}
 	return 0
+}
+
+func formatAnswer(record dns.RR) string {
+	header := record.Header()
+	prefix := fmt.Sprintf("%s %d IN %s", header.Name, header.Ttl, dns.TypeToString[header.Rrtype])
+
+	switch rr := record.(type) {
+	case *dns.A:
+		return fmt.Sprintf("%s %s", prefix, rr.A)
+	case *dns.AAAA:
+		return fmt.Sprintf("%s %s", prefix, rr.AAAA)
+	case *dns.CNAME:
+		return fmt.Sprintf("%s %s", prefix, rr.Target)
+	case *dns.NS:
+		return fmt.Sprintf("%s %s", prefix, rr.Ns)
+	case *dns.PTR:
+		return fmt.Sprintf("%s %s", prefix, rr.Ptr)
+	case *dns.MX:
+		return fmt.Sprintf("%s %d %s", prefix, rr.Preference, rr.Mx)
+	case *dns.TXT:
+		return fmt.Sprintf("%s %s", prefix, strings.Join(rr.Txt, " "))
+	case *dns.SRV:
+		return fmt.Sprintf("%s %d %d %d %s", prefix, rr.Priority, rr.Weight, rr.Port, rr.Target)
+	case *dns.SOA:
+		return fmt.Sprintf("%s mname=%s rname=%s serial=%d refresh=%d retry=%d expire=%d minttl=%d",
+			prefix, rr.Ns, rr.Mbox, rr.Serial, rr.Refresh, rr.Retry, rr.Expire, rr.Minttl)
+	case *dns.CAA:
+		return fmt.Sprintf("%s %d %s %q", prefix, rr.Flag, rr.Tag, rr.Value)
+	default:
+		return record.String()
+	}
 }
 
 func parseQueryOptions(args []string) (queryOptions, error) {
