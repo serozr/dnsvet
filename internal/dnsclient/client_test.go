@@ -53,12 +53,8 @@ func startUDPTestServerAt(t *testing.T, address string, handler func(*dns.Msg) *
 	return packetConn.LocalAddr().String(), received
 }
 
-func startTCPTestServerAt(t *testing.T, address string, handler func(*dns.Msg) *dns.Msg) {
+func startTCPTestServer(t *testing.T, listener net.Listener, handler func(*dns.Msg) *dns.Msg) {
 	t.Helper()
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		t.Fatalf("listen for TCP test server: %v", err)
-	}
 	t.Cleanup(func() { _ = listener.Close() })
 	server := &dns.Server{
 		Listener: listener,
@@ -69,19 +65,6 @@ func startTCPTestServerAt(t *testing.T, address string, handler func(*dns.Msg) *
 		}),
 	}
 	go func() { _ = server.ActivateAndServe() }()
-}
-
-func unusedLocalAddress(t *testing.T) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return address
 }
 
 func TestQueryUDPReturnsDNSResponse(t *testing.T) {
@@ -112,8 +95,12 @@ func TestQueryUDPReturnsDNSResponse(t *testing.T) {
 
 func TestQueryDoesNotUseTCPWhenUDPResponseIsComplete(t *testing.T) {
 	var tcpRequests atomic.Int32
-	address := unusedLocalAddress(t)
-	startTCPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for TCP test server: %v", err)
+	}
+	address := tcpListener.Addr().String()
+	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
 		tcpRequests.Add(1)
 		response := new(dns.Msg)
 		response.SetReply(request)
@@ -141,8 +128,12 @@ func TestQueryFallsBackToTCPWhenUDPResponseIsTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create test answer: %v", err)
 	}
-	address := unusedLocalAddress(t)
-	startTCPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for TCP test server: %v", err)
+	}
+	address := tcpListener.Addr().String()
+	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
 		response := new(dns.Msg)
 		response.SetReply(request)
 		response.Answer = append(response.Answer, answer)
