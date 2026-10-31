@@ -158,4 +158,3 @@ func TestRunQueryReportsDNSClientErrors(t *testing.T) {
 		t.Fatalf("error output = %q, want DNS query failure", stderr.String())
 	}
 }
-
