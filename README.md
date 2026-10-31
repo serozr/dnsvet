@@ -34,6 +34,7 @@ Requires Go 1.23 or later.
 ```bash
 git clone https://github.com/serozr/resolverguard.git
 cd resolverguard
+go mod download
 go test ./...
 go run ./cmd/resolverguard help
 ```
