@@ -1,10 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/miekg/dns"
+
+	"github.com/serozr/resolverguard/internal/dnsclient"
 )
 
 var (
@@ -12,6 +20,13 @@ var (
 	commit    = "unknown"
 	buildDate = "unknown"
 )
+
+type queryOptions struct {
+	server  string
+	qtype   uint16
+	timeout time.Duration
+	domain  string
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -34,11 +49,118 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "Go: %s\n", runtime.Version())
 		fmt.Fprintf(stdout, "Platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		return 0
+	case "query":
+		return runQuery(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 		printUsage(stderr)
 		return 2
 	}
+}
+
+func runQuery(args []string, stdout, stderr io.Writer) int {
+	options, err := parseQueryOptions(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "query: %v\n", err)
+		fmt.Fprintln(stderr, "Usage: resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), options.timeout)
+	defer cancel()
+
+	response, rtt, err := dnsclient.New(options.timeout).Query(ctx, options.server, options.domain, options.qtype)
+	if err != nil {
+		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Resolver: %s\n", options.server)
+	fmt.Fprintf(stdout, "Question: %s %s\n", dns.Fqdn(options.domain), dns.TypeToString[options.qtype])
+	rcode := dns.RcodeToString[response.Rcode]
+	if rcode == "" {
+		rcode = strconv.Itoa(response.Rcode)
+	}
+	fmt.Fprintf(stdout, "Response: %s (%d)\n", rcode, response.Rcode)
+	fmt.Fprintf(stdout, "RTT: %s\n", rtt.Round(time.Microsecond))
+
+	if len(response.Answer) == 0 {
+		fmt.Fprintln(stdout, "Answers: none")
+		return 0
+	}
+
+	fmt.Fprintln(stdout, "Answers:")
+	for _, answer := range response.Answer {
+		fmt.Fprintf(stdout, "  %s\n", answer)
+	}
+	return 0
+}
+
+func parseQueryOptions(args []string) (queryOptions, error) {
+	options := queryOptions{
+		server:  "1.1.1.1",
+		qtype:   dns.TypeA,
+		timeout: 3 * time.Second,
+	}
+	var positional []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		name, value, hasValue := strings.Cut(arg, "=")
+		switch name {
+		case "-h", "--help":
+			return options, fmt.Errorf("help requested")
+		case "-s", "--server":
+			if !hasValue {
+				i++
+				if i >= len(args) {
+					return options, fmt.Errorf("%s requires a value", name)
+				}
+				value = args[i]
+			}
+			options.server = value
+		case "-t", "--type":
+			if !hasValue {
+				i++
+				if i >= len(args) {
+					return options, fmt.Errorf("%s requires a value", name)
+				}
+				value = args[i]
+			}
+			qtype, ok := dns.StringToType[strings.ToUpper(value)]
+			if !ok {
+				return options, fmt.Errorf("unsupported DNS record type %q", value)
+			}
+			options.qtype = qtype
+		case "--timeout":
+			if !hasValue {
+				i++
+				if i >= len(args) {
+					return options, fmt.Errorf("%s requires a value", name)
+				}
+				value = args[i]
+			}
+			timeout, err := time.ParseDuration(value)
+			if err != nil || timeout <= 0 {
+				return options, fmt.Errorf("invalid timeout %q: use a positive duration such as 2s", value)
+			}
+			options.timeout = timeout
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return options, fmt.Errorf("unknown option %q", arg)
+			}
+			positional = append(positional, arg)
+		}
+	}
+
+	if len(positional) != 1 {
+		return options, fmt.Errorf("expected exactly one domain name")
+	}
+	options.domain = positional[0]
+	if strings.TrimSpace(options.server) == "" {
+		return options, fmt.Errorf("resolver address must not be empty")
+	}
+	return options, nil
 }
 
 func printUsage(w io.Writer) {
@@ -50,4 +172,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  help      Show this help")
 	fmt.Fprintln(w, "  version   Show version and build information")
+	fmt.Fprintln(w, "  query     Query a DNS record")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Query usage:")
+	fmt.Fprintln(w, "  resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "  resolverguard query example.com --server 1.1.1.1 --type A")
 }
