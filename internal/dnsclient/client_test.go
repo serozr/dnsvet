@@ -247,7 +247,7 @@ func TestNewUsesDefaultTimeout(t *testing.T) {
 
 func TestQueryRejectsMismatchedResponseQuestion(t *testing.T) {
 	tests := []struct {
-		name string
+		name     string
 		question dns.Question
 	}{
 		{
