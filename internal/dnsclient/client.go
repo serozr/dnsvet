@@ -58,7 +58,30 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 		Timeout: c.timeout,
 	}
 
-	response, rtt, err := dnsClient.ExchangeContext(ctx, message, resolver)
+	conn, err := dnsClient.DialContext(ctx, resolver)
+	if err != nil {
+		return nil, 0, fmt.Errorf("connect to DNS resolver %s: %w", resolver, err)
+	}
+	defer conn.Close()
+
+	stopCancellation := make(chan struct{})
+	cancellationWatcherDone := make(chan struct{})
+	go func() {
+		defer close(cancellationWatcherDone)
+		select {
+		case <-ctx.Done():
+			_ = conn.SetDeadline(time.Now())
+		case <-stopCancellation:
+		}
+	}()
+
+	response, rtt, err := dnsClient.ExchangeWithConnContext(ctx, message, conn)
+	close(stopCancellation)
+	<-cancellationWatcherDone
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, rtt, ctxErr
+	}
 	if err != nil {
 		return nil, rtt, fmt.Errorf("DNS UDP query to %s failed: %w", resolver, err)
 	}
