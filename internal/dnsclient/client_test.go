@@ -216,6 +216,38 @@ func TestQueryRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestValidateDNSName(t *testing.T) {
+	valid := []string{
+		"example.com",
+		"example.com.",
+		"_sip._tcp.example.com",
+		"host-name.example.com",
+		"xn--bcher-kva.example",
+	}
+	for _, name := range valid {
+		t.Run("valid/"+name, func(t *testing.T) {
+			if err := validateDNSName(name); err != nil {
+				t.Fatalf("validateDNSName(%q) error = %v", name, err)
+			}
+		})
+	}
+
+	invalid := []string{
+		"",
+		"bad domain",
+		"example.com/path",
+		"bad@name.example",
+		"bad\\name.example",
+	}
+	for _, name := range invalid {
+		t.Run("invalid/"+name, func(t *testing.T) {
+			if err := validateDNSName(name); err == nil {
+				t.Fatalf("validateDNSName(%q) error = nil, want validation error", name)
+			}
+		})
+	}
+}
+
 func TestNewUsesDefaultTimeout(t *testing.T) {
 	if client := New(0); client.timeout != defaultTimeout {
 		t.Fatalf("timeout = %s, want %s", client.timeout, defaultTimeout)
