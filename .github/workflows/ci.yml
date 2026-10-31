@@ -34,8 +34,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Resolve dependencies
+        run: go mod tidy
 
       - name: Check formatting
         shell: bash
@@ -69,8 +69,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Resolve dependencies
+        run: go mod tidy
 
       - name: Test with race detector
         run: go test -race ./...
