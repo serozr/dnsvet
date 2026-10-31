@@ -169,7 +169,7 @@ func TestQueryFallsBackToTCPWhenUDPResponseIsTruncated(t *testing.T) {
 func TestQueryTimeout(t *testing.T) {
 	server, _ := startUDPTestServer(t, func(*dns.Msg) *dns.Msg { return nil })
 	started := time.Now()
-	_, _, err := New(40 * time.Millisecond).Query(context.Background(), server, "timeout.test", dns.TypeA)
+	_, _, err := New(40*time.Millisecond).Query(context.Background(), server, "timeout.test", dns.TypeA)
 	if err == nil {
 		t.Fatal("Query() error = nil, want timeout")
 	}
@@ -186,7 +186,7 @@ func TestQueryContextCancellation(t *testing.T) {
 		<-received
 		cancel()
 	}()
-	_, _, err := New(2 * time.Second).Query(ctx, server, "cancel.test", dns.TypeA)
+	_, _, err := New(2*time.Second).Query(ctx, server, "cancel.test", dns.TypeA)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Query() error = %v, want context.Canceled", err)
 	}
