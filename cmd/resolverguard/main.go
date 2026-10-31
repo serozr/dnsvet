@@ -134,7 +134,6 @@ func formatAnswer(record dns.RR) string {
 	}
 }
 
-
 func isSupportedQueryType(qtype uint16) bool {
 	switch qtype {
 	case dns.TypeA, dns.TypeAAAA, dns.TypeCNAME, dns.TypeMX, dns.TypeNS,
