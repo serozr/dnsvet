@@ -103,7 +103,6 @@ func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg
 	return response, nil
 }
 
-
 func validateDNSName(name string) error {
 	if _, ok := dns.IsDomainName(name); !ok {
 		return fmt.Errorf("invalid DNS name %q", name)
