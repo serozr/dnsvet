@@ -158,13 +158,16 @@ func TestValidateTrustAnchorDNSKEYSetAcceptsMultipleConfiguredAnchors(t *testing
 	firstKey, _ := makeSigningKey(t, "example.test.")
 	secondKey, secondSigner := makeSigningKey(t, "example.test.")
 	rrset := RRset{
-		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Name:    "example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
 		Records: []dns.RR{firstKey, secondKey},
 	}
 	signature := signTestRRset(t, rrset, secondKey, secondSigner, at)
 
 	keys, err := ValidateTrustAnchorDNSKEYSet(
-		rrset, []*dns.RRSIG{signature},
+		rrset,
+		[]*dns.RRSIG{signature},
 		TrustAnchor{Zone: "example.test.", DNSKEYs: []*dns.DNSKEY{firstKey, secondKey}},
 		at,
 	)
@@ -181,13 +184,16 @@ func TestValidateTrustAnchorDNSKEYSetUsesPresentAnchorDuringRollover(t *testing.
 	retiredKey, _ := makeSigningKey(t, "example.test.")
 	activeKey, activeSigner := makeSigningKey(t, "example.test.")
 	rrset := RRset{
-		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Name:    "example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
 		Records: []dns.RR{activeKey},
 	}
 	signature := signTestRRset(t, rrset, activeKey, activeSigner, at)
 
 	_, err := ValidateTrustAnchorDNSKEYSet(
-		rrset, []*dns.RRSIG{signature},
+		rrset,
+		[]*dns.RRSIG{signature},
 		TrustAnchor{Zone: "example.test.", DNSKEYs: []*dns.DNSKEY{retiredKey, activeKey}},
 		at,
 	)
@@ -202,7 +208,8 @@ func TestValidateTrustAnchorDNSKEYSetRejectsWhenNoConfiguredAnchorIsPresent(t *t
 	_, _, otherKey := signedDNSKEYSet(t, at)
 
 	_, err := ValidateTrustAnchorDNSKEYSet(
-		rrset, []*dns.RRSIG{signature},
+		rrset,
+		[]*dns.RRSIG{signature},
 		TrustAnchor{Zone: "example.test.", DNSKEYs: []*dns.DNSKEY{otherKey}},
 		at,
 	)
@@ -216,7 +223,8 @@ func TestValidateTrustAnchorDNSKEYSetRejectsNilConfiguredAnchor(t *testing.T) {
 	rrset, signature, key := signedDNSKEYSet(t, at)
 
 	_, err := ValidateTrustAnchorDNSKEYSet(
-		rrset, []*dns.RRSIG{signature},
+		rrset,
+		[]*dns.RRSIG{signature},
 		TrustAnchor{Zone: "example.test.", DNSKEYs: []*dns.DNSKEY{key, nil}},
 		at,
 	)
@@ -224,4 +232,3 @@ func TestValidateTrustAnchorDNSKEYSetRejectsNilConfiguredAnchor(t *testing.T) {
 		t.Fatalf("error = %v, want nil configured anchor rejection", err)
 	}
 }
-
