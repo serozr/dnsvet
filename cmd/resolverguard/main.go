@@ -78,7 +78,7 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 
 	resolver, err := dnsclient.NormalizeServer(options.server)
 	if err != nil {
-		fmt.Fprintf(stderr, "DNS query failed: %v\\n", err)
+		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1
 	}
 	response, elapsed, err := dnsclient.New(options.timeout).Query(ctx, resolver, options.domain, options.qtype)
@@ -87,14 +87,14 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Resolver: %s\n", options.server)
+	fmt.Fprintf(stdout, "Resolver: %s\n", resolver)
 	fmt.Fprintf(stdout, "Question: %s %s\n", dns.Fqdn(options.domain), dns.TypeToString[options.qtype])
 	rcode := dns.RcodeToString[response.Rcode]
 	if rcode == "" {
 		rcode = strconv.Itoa(response.Rcode)
 	}
 	fmt.Fprintf(stdout, "Response: %s (%d)\n", rcode, response.Rcode)
-	fmt.Fprintf(stdout, "RTT: %s\n", elapsed.Round(time.Microsecond))
+	fmt.Fprintf(stdout, "Elapsed: %s\n", elapsed.Round(time.Microsecond))
 
 	if len(response.Answer) == 0 {
 		fmt.Fprintln(stdout, "Answers: none")
