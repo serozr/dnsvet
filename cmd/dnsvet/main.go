@@ -89,6 +89,31 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if options.json {
+		output := queryJSONOutput{
+			Resolver: resolver,
+			Question: dns.Fqdn(options.domain),
+			Type:     dns.TypeToString[options.qtype],
+			Response: dns.RcodeToString[response.Rcode],
+			RCode:    response.Rcode,
+			Elapsed:  elapsed.String(),
+			Answers:  make([]string, 0, len(response.Answer)),
+		}
+		if output.Response == "" {
+			output.Response = strconv.Itoa(response.Rcode)
+		}
+		for _, answer := range response.Answer {
+			output.Answers = append(output.Answers, formatAnswer(answer))
+		}
+		encoder := json.NewEncoder(stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(output); err != nil {
+			fmt.Fprintf(stderr, "failed to encode JSON response: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+
 	fmt.Fprintf(stdout, "Resolver: %s\n", resolver)
 	fmt.Fprintf(stdout, "Question: %s %s\n", dns.Fqdn(options.domain), dns.TypeToString[options.qtype])
 	rcode := dns.RcodeToString[response.Rcode]
