@@ -10,10 +10,10 @@ import (
 )
 
 var (
-	ErrNoSignatures              = errors.New("RRset has no signatures")
-	ErrNoMatchingKey             = errors.New("no DNSKEY matches any RRSIG")
-	ErrSignatureNotValidAtTime   = errors.New("no RRSIG is valid at the supplied time")
-	ErrNoValidSignature          = errors.New("no RRSIG cryptographically validates")
+	ErrNoSignatures            = errors.New("RRset has no signatures")
+	ErrNoMatchingKey           = errors.New("no DNSKEY matches any RRSIG")
+	ErrSignatureNotValidAtTime = errors.New("no RRSIG is valid at the supplied time")
+	ErrNoValidSignature        = errors.New("no RRSIG cryptographically validates")
 )
 
 // VerifyRRset validates an RRset against its RRSIG records and candidate DNSKEYs.
