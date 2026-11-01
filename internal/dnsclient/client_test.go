@@ -378,3 +378,41 @@ func TestQuerySendsIDNAsPunycode(t *testing.T) {
 		t.Fatalf("Query() with IDN error = %v", err)
 	}
 }
+
+func TestQueryRejectsMismatchedResponseOpcode(t *testing.T) {
+	server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
+		response := new(dns.Msg)
+		response.SetReply(request)
+		response.Opcode = dns.OpcodeStatus
+		return response
+	})
+	_, _, err := New(time.Second).Query(context.Background(), server, "opcode.test", dns.TypeA)
+	if err == nil || !strings.Contains(err.Error(), "does not match request opcode") {
+		t.Fatalf("Query() error = %v, want mismatched opcode error", err)
+	}
+}
+
+func TestQueryRejectsTruncatedTCPFallbackResponse(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for TCP test server: %v", err)
+	}
+	address := tcpListener.Addr().String()
+	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
+		response := new(dns.Msg)
+		response.SetReply(request)
+		response.Truncated = true
+		return response
+	})
+	udpAddress, _ := startUDPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+		response := new(dns.Msg)
+		response.SetReply(request)
+		response.Truncated = true
+		return response
+	})
+	_, _, err = New(time.Second).Query(context.Background(), udpAddress, "still-truncated.test", dns.TypeA)
+	if err == nil || !strings.Contains(err.Error(), "still truncated after TCP fallback") {
+		t.Fatalf("Query() error = %v, want truncated TCP fallback error", err)
+	}
+}
+

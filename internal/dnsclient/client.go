@@ -72,6 +72,12 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s returned an empty response", resolver)
 		}
 	}
+	if response.Opcode != message.Opcode {
+		return nil, time.Since(started), fmt.Errorf("DNS response opcode %d does not match request opcode %d", response.Opcode, message.Opcode)
+	}
+	if response.Truncated {
+		return nil, time.Since(started), fmt.Errorf("DNS response from %s is still truncated after TCP fallback", resolver)
+	}
 	if err := validateResponseQuestion(response, message.Question[0]); err != nil {
 		return nil, time.Since(started), err
 	}
