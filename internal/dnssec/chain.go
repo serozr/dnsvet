@@ -41,8 +41,7 @@ func ValidateChain(
 	if len(delegations) > MaxDelegationDepth {
 		return ChainResult{}, fmt.Errorf("delegation depth %d exceeds maximum %d", len(delegations), MaxDelegationDepth)
 	}
-	_, validAnchorZone := dns.IsDomainName(dns.Fqdn(anchor.Zone))
-	if anchor.Zone == "" || !validAnchorZone {
+	if !validDNSName(anchor.Zone) {
 		return ChainResult{}, fmt.Errorf("invalid trust anchor zone %q", anchor.Zone)
 	}
 	keys, err := ValidateTrustAnchorDNSKEYSet(anchorRRset, anchorSignatures, anchor, at)
@@ -54,6 +53,9 @@ func ValidateChain(
 	for i, delegation := range delegations {
 		if delegation.DSRRset.Name == "" || delegation.DNSKEYRRset.Name == "" {
 			return ChainResult{}, fmt.Errorf("delegation %d has an empty RRset owner", i)
+		}
+		if !validDNSName(delegation.DSRRset.Name) || !validDNSName(delegation.DNSKEYRRset.Name) {
+			return ChainResult{}, fmt.Errorf("delegation %d has an invalid DNS owner name", i)
 		}
 		if delegation.DSRRset.Type != dns.TypeDS || delegation.DNSKEYRRset.Type != dns.TypeDNSKEY {
 			return ChainResult{}, fmt.Errorf("delegation %d has invalid RRset types", i)
@@ -102,4 +104,12 @@ func extractDNSKEYs(rrset RRset) []*dns.DNSKEY {
 
 func sameZone(a, b string) bool {
 	return dns.CanonicalName(a) == dns.CanonicalName(b)
+}
+
+func validDNSName(name string) bool {
+	if name == "" {
+		return false
+	}
+	_, ok := dns.IsDomainName(dns.Fqdn(name))
+	return ok
 }

@@ -287,3 +287,40 @@ func TestValidateChainRejectsInvalidSecondLevelDelegationSignature(t *testing.T)
 		t.Fatalf("error = %v, want ErrNoMatchingKey", err)
 	}
 }
+
+func TestValidateChainRejectsMalformedDelegationOwner(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	anchorRRset, anchorSignature, anchorKey := signedDNSKEYSet(t, at)
+	delegation := Delegation{
+		DSRRset: RRset{
+			Name: "bad..child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		},
+		DNSKEYRRset: RRset{
+			Name: "bad..child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		},
+	}
+
+	_, err := ValidateChain(
+		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
+		anchorRRset,
+		[]*dns.RRSIG{anchorSignature},
+		[]Delegation{delegation},
+		at,
+	)
+	if err == nil {
+		t.Fatal("ValidateChain() error = nil, want malformed DNS owner rejection")
+	}
+}
+
+func TestValidateChainRejectsMalformedTrustAnchorZone(t *testing.T) {
+	_, err := ValidateChain(
+		TrustAnchor{Zone: "bad..example.test."},
+		RRset{},
+		nil,
+		nil,
+		time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err == nil {
+		t.Fatal("ValidateChain() error = nil, want malformed trust anchor rejection")
+	}
+}
