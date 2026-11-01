@@ -67,6 +67,15 @@ func startTCPTestServer(t *testing.T, listener net.Listener, handler func(*dns.M
 	go func() { _ = server.ActivateAndServe() }()
 }
 
+func startTCPTestServerOnUDPAddress(t *testing.T, address string, handler func(*dns.Msg) *dns.Msg) {
+	t.Helper()
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatalf("listen for TCP test server: %v", err)
+	}
+	startTCPTestServer(t, listener, handler)
+}
+
 func TestQueryWithDNSSECRequestsDNSSECRecords(t *testing.T) {
 	server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
 		opt := request.IsEdns0()
@@ -110,18 +119,13 @@ func TestQueryUDPReturnsDNSResponse(t *testing.T) {
 
 func TestQueryDoesNotUseTCPWhenUDPResponseIsComplete(t *testing.T) {
 	var tcpRequests atomic.Int32
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen for TCP test server: %v", err)
-	}
-	address := tcpListener.Addr().String()
-	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
-		tcpRequests.Add(1)
+	udpAddress, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
 		response := new(dns.Msg)
 		response.SetReply(request)
 		return response
 	})
-	udpAddress, _ := startUDPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+	startTCPTestServerOnUDPAddress(t, udpAddress, func(request *dns.Msg) *dns.Msg {
+		tcpRequests.Add(1)
 		response := new(dns.Msg)
 		response.SetReply(request)
 		return response
@@ -143,21 +147,16 @@ func TestQueryFallsBackToTCPWhenUDPResponseIsTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create test answer: %v", err)
 	}
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen for TCP test server: %v", err)
-	}
-	address := tcpListener.Addr().String()
-	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
-		response := new(dns.Msg)
-		response.SetReply(request)
-		response.Answer = append(response.Answer, answer)
-		return response
-	})
-	udpAddress, _ := startUDPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+	udpAddress, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
 		response := new(dns.Msg)
 		response.SetReply(request)
 		response.Truncated = true
+		return response
+	})
+	startTCPTestServerOnUDPAddress(t, udpAddress, func(request *dns.Msg) *dns.Msg {
+		response := new(dns.Msg)
+		response.SetReply(request)
+		response.Answer = append(response.Answer, answer)
 		return response
 	})
 	response, _, err := New(time.Second).Query(context.Background(), udpAddress, "large.test", dns.TypeA)
@@ -408,18 +407,13 @@ func TestQueryRejectsMismatchedResponseOpcode(t *testing.T) {
 }
 
 func TestQueryRejectsTruncatedTCPFallbackResponse(t *testing.T) {
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen for TCP test server: %v", err)
-	}
-	address := tcpListener.Addr().String()
-	startTCPTestServer(t, tcpListener, func(request *dns.Msg) *dns.Msg {
+	udpAddress, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
 		response := new(dns.Msg)
 		response.SetReply(request)
 		response.Truncated = true
 		return response
 	})
-	udpAddress, _ := startUDPTestServerAt(t, address, func(request *dns.Msg) *dns.Msg {
+	startTCPTestServerOnUDPAddress(t, udpAddress, func(request *dns.Msg) *dns.Msg {
 		response := new(dns.Msg)
 		response.SetReply(request)
 		response.Truncated = true
