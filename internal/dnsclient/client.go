@@ -173,10 +173,8 @@ func normalizeDNSName(name string) (string, error) {
 			return "", fmt.Errorf("invalid DNS name %q: unsupported character %q", name, character)
 		}
 		if !ascii {
-			if err := idna.ValidateForRegistration(label); err != nil {
-				return "", fmt.Errorf("invalid internationalized DNS label %q: %w", label, err)
-			}
-			encoded, err := idna.Lookup.ToASCII(label)
+			registrationProfile := idna.New(idna.ValidateForRegistration())
+			encoded, err := registrationProfile.ToASCII(label)
 			if err != nil {
 				return "", fmt.Errorf("invalid internationalized DNS label %q: %w", label, err)
 			}
