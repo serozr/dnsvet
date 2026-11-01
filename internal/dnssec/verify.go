@@ -18,6 +18,7 @@ var (
 
 // VerifyRRset validates an RRset against its RRSIG records and candidate DNSKEYs.
 // It checks signature validity periods separately from cryptographic verification.
+// DNSKEYs with a Protocol value other than 3 are ignored as signing keys.
 // This verifies only the supplied key/signature relationship; it does not build
 // or authenticate the DNSSEC chain from a configured trust anchor.
 func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at time.Time) error {
@@ -68,7 +69,7 @@ func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at ti
 		validTime = true
 
 		for _, key := range keys {
-			if key == nil {
+			if key == nil || key.Protocol != 3 {
 				continue
 			}
 			if signature.KeyTag != key.KeyTag() ||

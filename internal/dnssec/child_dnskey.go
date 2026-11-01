@@ -12,8 +12,10 @@ import (
 var ErrNoDSMatchedDNSKEY = errors.New("DNSKEY RRset does not contain a DS-authenticated key")
 
 // ValidateChildDNSKEYSet verifies a child zone's DNSKEY RRset using only keys
-// authenticated by its parent's DS RRset. It returns the complete child key
-// set only after the RRset signature has been successfully verified.
+// authenticated by its parent's DS RRset. It returns only usable DNSKEYs
+// after verifying the signature over the complete original RRset. Records
+// with Protocol values other than 3 remain covered by that signature but are
+// not returned or used as signing keys.
 func ValidateChildDNSKEYSet(
 	childZone string,
 	rrset RRset,
@@ -45,14 +47,13 @@ func ValidateChildDNSKEYSet(
 		if !ok {
 			return nil, fmt.Errorf("child DNSKEY RRset record at index %d is not a DNSKEY", i)
 		}
-		if key.Protocol != 3 {
-			return nil, fmt.Errorf("child DNSKEY at index %d has invalid protocol %d", i, key.Protocol)
-		}
 		if key.Hdr.Class != rrset.Class ||
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
 			return nil, fmt.Errorf("child DNSKEY at index %d does not belong to zone %q", i, zone)
 		}
-		keys = append(keys, key)
+		if key.Protocol == 3 {
+			keys = append(keys, key)
+		}
 	}
 
 	authenticatedSigners := make([]*dns.DNSKEY, 0, len(dsMatchedKeys))
@@ -60,9 +61,12 @@ func ValidateChildDNSKEYSet(
 		if key == nil {
 			return nil, fmt.Errorf("DS-matched DNSKEY at index %d is nil", i)
 		}
-		if key.Protocol != 3 || key.Hdr.Class != rrset.Class ||
+		if key.Hdr.Class != rrset.Class ||
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
 			return nil, fmt.Errorf("DS-matched DNSKEY at index %d does not belong to child zone %q", i, zone)
+		}
+		if key.Protocol != 3 {
+			continue
 		}
 		for _, rrsetKey := range keys {
 			if sameDNSKEY(rrsetKey, key) {

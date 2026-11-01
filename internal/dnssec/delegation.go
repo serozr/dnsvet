@@ -13,9 +13,7 @@ var ErrNoDelegationKey = errors.New("no child DNSKEY matches the authenticated D
 
 // ValidateDelegationDS authenticates a child's DS RRset with the parent zone's
 // already-authenticated DNSKEYs, then matches those DS records to the supplied
-// child DNSKEYs. The returned keys are authenticated by the parent-signed DS
-// RRset, but the child's DNSKEY RRset signature must still be verified before
-// treating the complete child DNSKEY set as trusted.
+// child DNSKEYs. DNSKEYs with Protocol values other than 3 are ignored.
 func ValidateDelegationDS(
 	parentZone string,
 	dsRRset RRset,
@@ -46,15 +44,21 @@ func ValidateDelegationDS(
 		return nil, fmt.Errorf("zone %q is not a child delegation of parent %q", child, parent)
 	}
 
+	usableParentKeys := make([]*dns.DNSKEY, 0, len(parentKeys))
 	for i, key := range parentKeys {
 		if key == nil {
 			return nil, fmt.Errorf("parent DNSKEY at index %d is nil", i)
 		}
 		if key.Hdr.Class != dsRRset.Class ||
-			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), parent) ||
-			key.Protocol != 3 {
+			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), parent) {
 			return nil, fmt.Errorf("parent DNSKEY at index %d does not belong to parent zone %q", i, parent)
 		}
+		if key.Protocol == 3 {
+			usableParentKeys = append(usableParentKeys, key)
+		}
+	}
+	if len(usableParentKeys) == 0 {
+		return nil, errors.New("no usable parent DNSKEYs with protocol 3")
 	}
 
 	for i, record := range dsRRset.Records {
@@ -68,7 +72,7 @@ func ValidateDelegationDS(
 		}
 	}
 
-	if err := VerifyRRset(dsRRset, signatures, parentKeys, at); err != nil {
+	if err := VerifyRRset(dsRRset, signatures, usableParentKeys, at); err != nil {
 		return nil, fmt.Errorf("parent DS RRset signature verification failed: %w", err)
 	}
 
@@ -78,7 +82,7 @@ func ValidateDelegationDS(
 	for _, record := range dsRRset.Records {
 		ds := record.(*dns.DS)
 		for _, key := range childKeys {
-			if key == nil {
+			if key == nil || key.Protocol != 3 {
 				continue
 			}
 			if key.Hdr.Class != dsRRset.Class ||

@@ -18,11 +18,10 @@ type TrustAnchor struct {
 }
 
 // ValidateTrustAnchorDNSKEYSet authenticates a zone's DNSKEY RRset using an
-// explicitly configured DNSKEY trust anchor. It returns the zone keys only
+// explicitly configured DNSKEY trust anchor. It returns usable zone keys only
 // after the DNSKEY RRset signature has been verified by the pinned key.
-//
-// This is the root/anchor bootstrap primitive. It does not validate child
-// delegations or a complete path to a root trust anchor.
+// DNSKEY records with Protocol values other than 3 remain part of the signed
+// RRset, but are not returned as usable keys.
 func ValidateTrustAnchorDNSKEYSet(
 	rrset RRset,
 	signatures []*dns.RRSIG,
@@ -62,12 +61,12 @@ func ValidateTrustAnchorDNSKEYSet(
 		if !ok {
 			return nil, fmt.Errorf("DNSKEY RRset record at index %d is not a DNSKEY", i)
 		}
-		if key.Protocol != 3 {
-			return nil, fmt.Errorf("DNSKEY at index %d has invalid protocol %d", i, key.Protocol)
-		}
 		if key.Hdr.Class != rrset.Class ||
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
 			return nil, fmt.Errorf("DNSKEY at index %d does not belong to the anchored zone", i)
+		}
+		if key.Protocol != 3 {
+			continue
 		}
 		authenticatedKeys = append(authenticatedKeys, key)
 		if sameDNSKEY(key, anchor.DNSKEY) {
@@ -75,7 +74,7 @@ func ValidateTrustAnchorDNSKEYSet(
 		}
 	}
 	if pinnedKey == nil {
-		return nil, errors.New("configured trust anchor is absent from the DNSKEY RRset")
+		return nil, errors.New("configured trust anchor is absent from the usable DNSKEY RRset")
 	}
 
 	if err := VerifyRRset(rrset, signatures, []*dns.DNSKEY{pinnedKey}, at); err != nil {
