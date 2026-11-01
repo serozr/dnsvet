@@ -415,4 +415,3 @@ func TestQueryRejectsTruncatedTCPFallbackResponse(t *testing.T) {
 		t.Fatalf("Query() error = %v, want truncated TCP fallback error", err)
 	}
 }
-
