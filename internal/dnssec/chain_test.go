@@ -88,11 +88,12 @@ func TestValidateChainRejectsTamperedChildDNSKEYSet(t *testing.T) {
 	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
 
 	childKey, childSigner := makeSigningKey(t, "child.example.test.")
+	additionalKey, _ := makeSigningKey(t, "child.example.test.")
 	childSet := RRset{
 		Name:    "child.example.test.",
 		Class:   dns.ClassINET,
 		Type:    dns.TypeDNSKEY,
-		Records: []dns.RR{childKey},
+		Records: []dns.RR{childKey, additionalKey},
 	}
 	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
 	dsSet := RRset{
@@ -102,7 +103,7 @@ func TestValidateChainRejectsTamperedChildDNSKEYSet(t *testing.T) {
 		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
 	}
 	dsSig := signTestRRset(t, dsSet, anchorKey, anchorSigner, at)
-	childSet.Records[0].(*dns.DNSKEY).PublicKey += "A"
+	childSet.Records[1].(*dns.DNSKEY).PublicKey += "A"
 
 	_, err := ValidateChain(
 		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
