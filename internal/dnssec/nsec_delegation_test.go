@@ -8,30 +8,27 @@ import (
 )
 
 func signedDelegationNSEC(t *testing.T, at time.Time, bitmap []uint16) (RRset, *dns.RRSIG, *dns.DNSKEY) {
-	t.Helper()
+	return signedDelegationNSECWithNext(t, at, bitmap, "next.example.test.")
+}
 
+func signedDelegationNSECWithNext(t *testing.T, at time.Time, bitmap []uint16, next string) (RRset, *dns.RRSIG, *dns.DNSKEY) {
+	t.Helper()
 	parentKey, parentSigner := makeSigningKey(t, "example.test.")
 	nsec := &dns.NSEC{
 		Hdr: dns.RR_Header{
 			Name: "child.example.test.", Rrtype: dns.TypeNSEC,
 			Class: dns.ClassINET, Ttl: 3600,
 		},
-		NextDomain: "next.example.test.",
+		NextDomain: next,
 		TypeBitMap: bitmap,
 	}
-	rrset := RRset{
-		Name: nsec.Hdr.Name, Class: dns.ClassINET, Type: dns.TypeNSEC,
-		Records: []dns.RR{nsec},
-	}
+	rrset := RRset{Name: nsec.Hdr.Name, Class: dns.ClassINET, Type: dns.TypeNSEC, Records: []dns.RR{nsec}}
 	signature := &dns.RRSIG{
-		Hdr: dns.RR_Header{
-			Name: nsec.Hdr.Name, Rrtype: dns.TypeRRSIG,
-			Class: dns.ClassINET, Ttl: 3600,
-		},
-		Algorithm:  parentKey.Algorithm,
+		Hdr: dns.RR_Header{Name: nsec.Hdr.Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: 3600},
+		Algorithm: parentKey.Algorithm,
 		Expiration: uint32(at.Add(time.Hour).Unix()),
-		Inception:  uint32(at.Add(-time.Hour).Unix()),
-		KeyTag:     parentKey.KeyTag(),
+		Inception: uint32(at.Add(-time.Hour).Unix()),
+		KeyTag: parentKey.KeyTag(),
 		SignerName: "example.test.",
 	}
 	if err := signature.Sign(parentSigner, rrset.Records); err != nil {
@@ -42,14 +39,8 @@ func signedDelegationNSEC(t *testing.T, at time.Time, bitmap []uint16) (RRset, *
 
 func TestValidateInsecureDelegationNSECProvesDSAbsence(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{
-		dns.TypeNS, dns.TypeNSEC, dns.TypeRRSIG,
-	})
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at,
-	)
+	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS, dns.TypeNSEC, dns.TypeRRSIG})
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofProven {
 		t.Fatalf("status = %q, reason = %q; want proven", result.Status, result.Reason)
 	}
@@ -58,11 +49,7 @@ func TestValidateInsecureDelegationNSECProvesDSAbsence(t *testing.T) {
 func TestValidateInsecureDelegationNSECDoesNotProveWhenDSPresent(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS, dns.TypeDS})
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at,
-	)
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofNotProven {
 		t.Fatalf("status = %q, want not_proven", result.Status)
 	}
@@ -71,11 +58,7 @@ func TestValidateInsecureDelegationNSECDoesNotProveWhenDSPresent(t *testing.T) {
 func TestValidateInsecureDelegationNSECRejectsWrongOwner(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS})
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "other.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at,
-	)
+	result := ValidateInsecureDelegationNSEC("example.test.", "other.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofInvalid {
 		t.Fatalf("status = %q, want invalid", result.Status)
 	}
@@ -85,11 +68,7 @@ func TestValidateInsecureDelegationNSECRejectsInvalidSignature(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS})
 	rrset.Records[0].(*dns.NSEC).NextDomain = "tampered.example.test."
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at,
-	)
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofInvalid {
 		t.Fatalf("status = %q, want invalid", result.Status)
 	}
@@ -98,11 +77,7 @@ func TestValidateInsecureDelegationNSECRejectsInvalidSignature(t *testing.T) {
 func TestValidateInsecureDelegationNSECRequiresAuthenticatedParentKeys(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, _ := signedDelegationNSEC(t, at, []uint16{dns.TypeNS})
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, nil, at,
-	)
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, nil, at)
 	if result.Status != NSECProofNotProven {
 		t.Fatalf("status = %q, want not_proven", result.Status)
 	}
@@ -112,42 +87,16 @@ func TestValidateInsecureDelegationNSECRejectsOutOfZoneNextDomain(t *testing.T) 
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS})
 	rrset.Records[0].(*dns.NSEC).NextDomain = "outside.invalid."
-
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at,
-	)
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofInvalid {
 		t.Fatalf("status = %q, want invalid", result.Status)
 	}
 }
 
-
 func TestValidateInsecureDelegationNSECAllowsWrapAroundToApex(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS})
-	rrset.Records[0].(*dns.NSEC).NextDomain = "example.test."
-	// Re-sign because NextDomain is part of the signed NSEC RDATA.
-	parentSignerKey, parentSigner := makeSigningKey(t, "example.test.")
-	if !sameDNSKEY(parentSignerKey, parentKey) {
-		t.Fatal("unexpected independently generated key")
-	}
-	_ = signature
-	newSignature := &dns.RRSIG{
-		Hdr: dns.RR_Header{Name: rrset.Name, Rrtype: dns.TypeRRSIG, Class: rrset.Class, Ttl: 3600},
-		Algorithm: parentKey.Algorithm,
-		Expiration: uint32(at.Add(time.Hour).Unix()),
-		Inception: uint32(at.Add(-time.Hour).Unix()),
-		KeyTag: parentKey.KeyTag(),
-		SignerName: "example.test.",
-	}
-	if err := newSignature.Sign(parentSigner, rrset.Records); err != nil {
-		t.Fatalf("RRSIG.Sign(): %v", err)
-	}
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{newSignature}, []*dns.DNSKEY{parentSignerKey}, at,
-	)
+	rrset, signature, parentKey := signedDelegationNSECWithNext(t, at, []uint16{dns.TypeNS}, "example.test.")
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofProven {
 		t.Fatalf("status = %q, reason = %q; want proven", result.Status, result.Reason)
 	}
@@ -155,25 +104,8 @@ func TestValidateInsecureDelegationNSECAllowsWrapAroundToApex(t *testing.T) {
 
 func TestValidateInsecureDelegationNSECRejectsSOABitmap(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	rrset, _, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS, dns.TypeSOA})
-	parentSignerKey, parentSigner := makeSigningKey(t, "example.test.")
-	rrset.Records[0].(*dns.NSEC).TypeBitMap = []uint16{dns.TypeNS, dns.TypeSOA}
-	signature := &dns.RRSIG{
-		Hdr: dns.RR_Header{Name: rrset.Name, Rrtype: dns.TypeRRSIG, Class: rrset.Class, Ttl: 3600},
-		Algorithm: parentSignerKey.Algorithm,
-		Expiration: uint32(at.Add(time.Hour).Unix()),
-		Inception: uint32(at.Add(-time.Hour).Unix()),
-		KeyTag: parentSignerKey.KeyTag(),
-		SignerName: "example.test.",
-	}
-	if err := signature.Sign(parentSigner, rrset.Records); err != nil {
-		t.Fatalf("RRSIG.Sign(): %v", err)
-	}
-	_ = parentKey
-	result := ValidateInsecureDelegationNSEC(
-		"example.test.", "child.example.test.", rrset,
-		[]*dns.RRSIG{signature}, []*dns.DNSKEY{parentSignerKey}, at,
-	)
+	rrset, signature, parentKey := signedDelegationNSEC(t, at, []uint16{dns.TypeNS, dns.TypeSOA})
+	result := ValidateInsecureDelegationNSEC("example.test.", "child.example.test.", rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{parentKey}, at)
 	if result.Status != NSECProofInvalid {
 		t.Fatalf("status = %q, want invalid", result.Status)
 	}
