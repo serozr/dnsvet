@@ -134,13 +134,9 @@ func isChildZone(parent, child string) bool {
 	parent = strings.ToLower(dns.Fqdn(parent))
 	child = strings.ToLower(dns.Fqdn(child))
 	if parent == "." {
-		return child != "." && strings.Count(strings.TrimSuffix(child, "."), ".") == 0
+		return child != "."
 	}
-	if child == parent || !strings.HasSuffix(child, "."+parent) {
-		return false
-	}
-	prefix := strings.TrimSuffix(child, parent)
-	return strings.HasSuffix(prefix, ".") && strings.Count(strings.TrimSuffix(prefix, "."), ".") == 0
+	return child != parent && strings.HasSuffix(child, "."+parent)
 }
 
 func containsDNSKEY(keys []*dns.DNSKEY, candidate *dns.DNSKEY) bool {

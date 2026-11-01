@@ -31,22 +31,32 @@ func makeSigningKey(t *testing.T, zone string) (*dns.DNSKEY, crypto.Signer) {
 
 func signedDelegationDS(t *testing.T, at time.Time) (RRset, *dns.RRSIG, *dns.DNSKEY, *dns.DNSKEY, crypto.Signer) {
 	t.Helper()
-	parentKey, parentSigner := makeSigningKey(t, "test.")
-	childKey, _ := makeSigningKey(t, "example.test.")
+	return signedDelegationDSForZones(t, at, "test.", "example.test.")
+}
+
+func signedDelegationDSForZones(
+	t *testing.T,
+	at time.Time,
+	parentZone string,
+	childZone string,
+) (RRset, *dns.RRSIG, *dns.DNSKEY, *dns.DNSKEY, crypto.Signer) {
+	t.Helper()
+	parentKey, parentSigner := makeSigningKey(t, parentZone)
+	childKey, _ := makeSigningKey(t, childZone)
 	ds := childKey.ToDS(dns.SHA256)
 	rrset := RRset{
-		Name:    "example.test.",
+		Name:    dns.Fqdn(childZone),
 		Class:   dns.ClassINET,
 		Type:    dns.TypeDS,
 		Records: []dns.RR{ds},
 	}
 	signature := &dns.RRSIG{
-		Hdr:        dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: 3600},
+		Hdr:        dns.RR_Header{Name: dns.Fqdn(childZone), Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: 3600},
 		Algorithm:  dns.ED25519,
 		Expiration: uint32(at.Add(time.Hour).Unix()),
 		Inception:  uint32(at.Add(-time.Hour).Unix()),
 		KeyTag:     parentKey.KeyTag(),
-		SignerName: "test.",
+		SignerName: dns.Fqdn(parentZone),
 	}
 	if err := signature.Sign(parentSigner, rrset.Records); err != nil {
 		t.Fatalf("RRSIG.Sign(): %v", err)
@@ -233,17 +243,52 @@ func TestValidateDelegationDSAcceptsSHA1WhenSHA256IsAbsent(t *testing.T) {
 	}
 }
 
-func TestIsChildZoneRequiresImmediateChild(t *testing.T) {
-	if !isChildZone("example.test.", "child.example.test.") {
-		t.Fatal("immediate child was rejected")
+func TestIsChildZoneAcceptsDescendants(t *testing.T) {
+	tests := []struct {
+		name   string
+		parent string
+		child  string
+		want   bool
+	}{
+		{"immediate child", "example.test.", "child.example.test.", true},
+		{"grandchild", "example.test.", "grandchild.child.example.test.", true},
+		{"deep descendant", "example.test.", "a.b.c.example.test.", true},
+		{"same zone", "example.test.", "example.test.", false},
+		{"unrelated zone", "example.test.", "example.org.", false},
+		{"root direct child", ".", "test.", true},
+		{"root multi-label descendant", ".", "child.test.", true},
+		{"root itself", ".", ".", false},
 	}
-	if isChildZone("example.test.", "grandchild.child.example.test.") {
-		t.Fatal("grandchild was accepted as immediate child")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isChildZone(tt.parent, tt.child)
+			if got != tt.want {
+				t.Fatalf("isChildZone(%q, %q) = %t, want %t", tt.parent, tt.child, got, tt.want)
+			}
+		})
 	}
-	if !isChildZone(".", "test.") {
-		t.Fatal("top-level zone was rejected as a child of root")
+}
+
+func TestValidateDelegationDSAcceptsDeepDescendantDelegation(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	const parentZone = "example.test."
+	const childZone = "www.dept.example.test."
+	rrset, signature, parentKey, childKey, _ := signedDelegationDSForZones(
+		t, at, parentZone, childZone,
+	)
+
+	keys, err := ValidateDelegationDS(
+		parentZone,
+		rrset,
+		[]*dns.RRSIG{signature},
+		[]*dns.DNSKEY{parentKey},
+		[]*dns.DNSKEY{childKey},
+		at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateDelegationDS() rejected a valid descendant delegation: %v", err)
 	}
-	if isChildZone(".", "child.test.") {
-		t.Fatal("multi-label descendant was accepted as immediate child of root")
+	if len(keys) != 1 || !sameDNSKEY(keys[0], childKey) {
+		t.Fatalf("matched keys = %v, want child DNSKEY", keys)
 	}
 }
