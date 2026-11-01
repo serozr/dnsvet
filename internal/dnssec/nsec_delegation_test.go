@@ -25,10 +25,10 @@ func signedDelegationNSECWithNext(t *testing.T, at time.Time, bitmap []uint16, n
 	rrset := RRset{Name: nsec.Hdr.Name, Class: dns.ClassINET, Type: dns.TypeNSEC, Records: []dns.RR{nsec}}
 	signature := &dns.RRSIG{
 		Hdr: dns.RR_Header{Name: nsec.Hdr.Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: 3600},
-		Algorithm: parentKey.Algorithm,
+		Algorithm:  parentKey.Algorithm,
 		Expiration: uint32(at.Add(time.Hour).Unix()),
-		Inception: uint32(at.Add(-time.Hour).Unix()),
-		KeyTag: parentKey.KeyTag(),
+		Inception:  uint32(at.Add(-time.Hour).Unix()),
+		KeyTag:     parentKey.KeyTag(),
 		SignerName: "example.test.",
 	}
 	if err := signature.Sign(parentSigner, rrset.Records); err != nil {
