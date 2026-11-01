@@ -182,7 +182,9 @@ func TestParseQueryOptionsRejectsTimeoutOverOneMinute(t *testing.T) {
 
 func TestRunQueryDNSSECJSONMetadata(t *testing.T) {
 	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil { t.Fatalf("listen for DNS test server: %v", err) }
+	if err != nil {
+		t.Fatalf("listen for DNS test server: %v", err)
+	}
 	defer packetConn.Close()
 	server := &dns.Server{
 		PacketConn: packetConn,
@@ -200,10 +202,16 @@ func TestRunQueryDNSSECJSONMetadata(t *testing.T) {
 	defer server.Shutdown()
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"query", "example.test", "--server", packetConn.LocalAddr().String(), "--dnssec", "--json"}, &stdout, &stderr)
-	if code != 0 { t.Fatalf("run() exit code = %d; stderr = %q", code, stderr.String()) }
+	if code != 0 {
+		t.Fatalf("run() exit code = %d; stderr = %q", code, stderr.String())
+	}
 	var output queryJSONOutput
-	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil { t.Fatalf("invalid JSON: %v", err) }
-	if !output.DNSSECRequested || !output.Authenticated { t.Fatalf("missing DNSSEC metadata: %+v", output) }
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if !output.DNSSECRequested || !output.Authenticated {
+		t.Fatalf("missing DNSSEC metadata: %+v", output)
+	}
 }
 
 func TestRunQueryJSONOutput(t *testing.T) {

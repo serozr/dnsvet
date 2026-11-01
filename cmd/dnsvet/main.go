@@ -101,13 +101,13 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		output := queryJSONOutput{
 			DNSSECRequested: options.dnssec,
 			Authenticated:   response.AuthenticatedData,
-			Resolver: resolver,
-			Question: dns.Fqdn(options.domain),
-			Type:     dns.TypeToString[options.qtype],
-			Response: dns.RcodeToString[response.Rcode],
-			RCode:    response.Rcode,
-			Elapsed:  elapsed.String(),
-			Answers:  make([]string, 0, len(response.Answer)),
+			Resolver:        resolver,
+			Question:        dns.Fqdn(options.domain),
+			Type:            dns.TypeToString[options.qtype],
+			Response:        dns.RcodeToString[response.Rcode],
+			RCode:           response.Rcode,
+			Elapsed:         elapsed.String(),
+			Answers:         make([]string, 0, len(response.Answer)),
 		}
 		if output.Response == "" {
 			output.Response = strconv.Itoa(response.Rcode)
@@ -150,12 +150,12 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 }
 
 type queryJSONOutput struct {
-	Resolver string   `json:"resolver"`
-	Question string   `json:"question"`
-	Type     string   `json:"type"`
-	Response string   `json:"response"`
-	RCode    int      `json:"rcode"`
-	Elapsed  string   `json:"elapsed"`
+	Resolver        string   `json:"resolver"`
+	Question        string   `json:"question"`
+	Type            string   `json:"type"`
+	Response        string   `json:"response"`
+	RCode           int      `json:"rcode"`
+	Elapsed         string   `json:"elapsed"`
 	Answers         []string `json:"answers"`
 	DNSSECRequested bool     `json:"dnssec_requested"`
 	Authenticated   bool     `json:"authenticated_data"`
