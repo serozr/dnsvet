@@ -324,3 +324,57 @@ func TestValidateResponseQuestionRejectsSuccessfulResponseWithoutQuestion(t *tes
 		t.Fatalf("validateResponseQuestion() error = %v, want missing-question error", err)
 	}
 }
+
+func TestNormalizeDNSNameConvertsIDNToASCII(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "bücher.de", want: "xn--bcher-kva.de"},
+		{input: "bücher.de.", want: "xn--bcher-kva.de."},
+		{input: "例え.テスト", want: "xn--r8jz45g.xn--zckzah"},
+		{input: "_sip._tcp.bücher.de", want: "_sip._tcp.xn--bcher-kva.de"},
+	}
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			got, err := normalizeDNSName(test.input)
+			if err != nil {
+				t.Fatalf("normalizeDNSName(%q) error = %v", test.input, err)
+			}
+			if got != test.want {
+				t.Fatalf("normalizeDNSName(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeDNSNameRejectsInvalidIDN(t *testing.T) {
+	invalid := []string{
+		"bücher..de",
+		"💩.example",
+		"-bücher.example",
+		"bücher-.example",
+	}
+	for _, name := range invalid {
+		t.Run(name, func(t *testing.T) {
+			if _, err := normalizeDNSName(name); err == nil {
+				t.Fatalf("normalizeDNSName(%q) error = nil, want validation error", name)
+			}
+		})
+	}
+}
+
+func TestQuerySendsIDNAsPunycode(t *testing.T) {
+	server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
+		if len(request.Question) != 1 || request.Question[0].Name != "xn--bcher-kva.de." {
+			t.Errorf("query question = %+v, want xn--bcher-kva.de.", request.Question)
+		}
+		response := new(dns.Msg)
+		response.SetReply(request)
+		return response
+	})
+	_, _, err := New(time.Second).Query(context.Background(), server, "bücher.de", dns.TypeA)
+	if err != nil {
+		t.Fatalf("Query() with IDN error = %v", err)
+	}
+}

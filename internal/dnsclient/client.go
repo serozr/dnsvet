@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"golang.org/x/net/idna"
 )
 
 const defaultTimeout = 3 * time.Second
@@ -39,7 +40,8 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 		return nil, 0, err
 	}
 	name = strings.TrimSpace(name)
-	if err := validateDNSName(name); err != nil {
+	asciiName, err := normalizeDNSName(name)
+	if err != nil {
 		return nil, 0, err
 	}
 	if qtype == 0 {
@@ -47,7 +49,7 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 	}
 
 	message := new(dns.Msg)
-	message.SetQuestion(dns.Fqdn(name), qtype)
+	message.SetQuestion(dns.Fqdn(asciiName), qtype)
 	started := time.Now()
 
 	response, err := c.exchange(ctx, resolver, message, "udp")
@@ -135,19 +137,57 @@ func validateResponseQuestion(response *dns.Msg, expected dns.Question) error {
 }
 
 func validateDNSName(name string) error {
-	if _, ok := dns.IsDomainName(name); !ok {
-		return fmt.Errorf("invalid DNS name %q", name)
+	_, err := normalizeDNSName(name)
+	return err
+}
+
+// normalizeDNSName converts internationalized labels to their ASCII-compatible
+// encoding while preserving ASCII service labels such as _sip and _tcp.
+func normalizeDNSName(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("invalid DNS name %q", name)
 	}
-	for _, character := range name {
-		if (character >= 'a' && character <= 'z') ||
-			(character >= 'A' && character <= 'Z') ||
-			(character >= '0' && character <= '9') ||
-			character == '-' || character == '_' || character == '.' {
-			continue
+	trailingDot := strings.HasSuffix(name, ".")
+	trimmed := strings.TrimSuffix(name, ".")
+	if trimmed == "" {
+		return "", fmt.Errorf("invalid DNS name %q", name)
+	}
+
+	labels := strings.Split(trimmed, ".")
+	for i, label := range labels {
+		if label == "" {
+			return "", fmt.Errorf("invalid DNS name %q: empty label", name)
 		}
-		return fmt.Errorf("invalid DNS name %q: unsupported character %q", name, character)
+		ascii := true
+		for _, character := range label {
+			if character > 127 {
+				ascii = false
+				break
+			}
+			if (character >= 'a' && character <= 'z') ||
+				(character >= 'A' && character <= 'Z') ||
+				(character >= '0' && character <= '9') ||
+				character == '-' || character == '_' {
+				continue
+			}
+			return "", fmt.Errorf("invalid DNS name %q: unsupported character %q", name, character)
+		}
+		if !ascii {
+			encoded, err := idna.Lookup.ToASCII(label)
+			if err != nil {
+				return "", fmt.Errorf("invalid internationalized DNS label %q: %w", label, err)
+			}
+			labels[i] = encoded
+		}
 	}
-	return nil
+	normalized := strings.Join(labels, ".")
+	if trailingDot {
+		normalized += "."
+	}
+	if _, ok := dns.IsDomainName(normalized); !ok {
+		return "", fmt.Errorf("invalid DNS name %q after IDNA conversion", name)
+	}
+	return normalized, nil
 }
 
 func NormalizeServer(server string) (string, error) {
