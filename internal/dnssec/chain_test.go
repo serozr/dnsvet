@@ -172,3 +172,118 @@ func signTestRRset(t *testing.T, rrset RRset, key *dns.DNSKEY, signer crypto.Sig
 	}
 	return sig
 }
+
+func TestValidateChainAuthenticatesMultipleDelegationLevels(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+
+	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
+	anchorSet := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
+	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
+
+	childKey, childSigner := makeSigningKey(t, "child.example.test.")
+	childSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{childKey},
+	}
+	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
+	childDSSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
+	childDSSig := signTestRRset(t, childDSSet, anchorKey, anchorSigner, at)
+
+	grandchildKey, grandchildSigner := makeSigningKey(t, "grandchild.child.example.test.")
+	grandchildSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{grandchildKey},
+	}
+	grandchildSig := signTestRRset(t, grandchildSet, grandchildKey, grandchildSigner, at)
+	grandchildDSSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{grandchildKey.ToDS(dns.SHA256)},
+	}
+	grandchildDSSig := signTestRRset(t, grandchildDSSet, childKey, childSigner, at)
+
+	result, err := ValidateChain(
+		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
+		anchorSet,
+		[]*dns.RRSIG{anchorSig},
+		[]Delegation{
+			{
+				DSRRset: childDSSet, DSSignatures: []*dns.RRSIG{childDSSig},
+				DNSKEYRRset: childSet, DNSKEYSignatures: []*dns.RRSIG{childSig},
+			},
+			{
+				DSRRset: grandchildDSSet, DSSignatures: []*dns.RRSIG{grandchildDSSig},
+				DNSKEYRRset: grandchildSet, DNSKEYSignatures: []*dns.RRSIG{grandchildSig},
+			},
+		},
+		at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateChain() error = %v", err)
+	}
+	if result.Zone != "grandchild.child.example.test." || len(result.Keys) != 1 ||
+		!sameDNSKEY(result.Keys[0], grandchildKey) {
+		t.Fatalf("unexpected chain result: zone=%q keys=%d", result.Zone, len(result.Keys))
+	}
+}
+
+func TestValidateChainRejectsInvalidSecondLevelDelegationSignature(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+
+	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
+	anchorSet := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
+	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
+
+	childKey, childSigner := makeSigningKey(t, "child.example.test.")
+	childSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{childKey},
+	}
+	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
+	childDSSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
+	childDSSig := signTestRRset(t, childDSSet, anchorKey, anchorSigner, at)
+
+	grandchildKey, grandchildSigner := makeSigningKey(t, "grandchild.child.example.test.")
+	grandchildSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{grandchildKey},
+	}
+	grandchildSig := signTestRRset(t, grandchildSet, grandchildKey, grandchildSigner, at)
+	grandchildDSSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{grandchildKey.ToDS(dns.SHA256)},
+	}
+	// Deliberately sign the second DS RRset with the root anchor, not its parent.
+	invalidGrandchildDSSig := signTestRRset(t, grandchildDSSet, anchorKey, anchorSigner, at)
+
+	_, err := ValidateChain(
+		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
+		anchorSet,
+		[]*dns.RRSIG{anchorSig},
+		[]Delegation{
+			{
+				DSRRset: childDSSet, DSSignatures: []*dns.RRSIG{childDSSig},
+				DNSKEYRRset: childSet, DNSKEYSignatures: []*dns.RRSIG{childSig},
+			},
+			{
+				DSRRset: grandchildDSSet, DSSignatures: []*dns.RRSIG{invalidGrandchildDSSig},
+				DNSKEYRRset: grandchildSet, DNSKEYSignatures: []*dns.RRSIG{grandchildSig},
+			},
+		},
+		at,
+	)
+	if !errors.Is(err, ErrNoMatchingKey) {
+		t.Fatalf("error = %v, want ErrNoMatchingKey", err)
+	}
+}
