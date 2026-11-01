@@ -27,7 +27,7 @@ It is being built to inspect DNS resolver configuration, query behavior, availab
 
 Features will be documented as implemented only after they have working tests.
 
-The current DNSSEC package contains validation primitives for RRsets, DS/DNSKEY matching, trust anchors, and supplied delegation chains. It is not yet a complete network-recursive DNSSEC validator; authenticated negative-proof validation and CLI integration remain in development.
+The current DNSSEC package contains validation primitives for RRsets, DS/DNSKEY matching, trust anchors, supplied delegation chains, and a bounded parser for locally provisioned DNSKEY trust-anchor files. It is not yet a complete network-recursive DNSSEC validator; authenticated negative-proof validation and CLI integration remain in development.
 
 ## Getting started
 

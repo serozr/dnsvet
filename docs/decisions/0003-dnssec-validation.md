@@ -37,7 +37,7 @@ The initial trust-anchor policy will be deterministic and local. Trust anchors m
 ## Implementation sequence
 
 - **Phase A — primitives**: immutable validation result types, RRset grouping, DNSKEY/DS matching, signature time checks, and cryptographic verification wrappers. No network chain walking.
-- **Phase B — trust chain**: root trust anchor loading and bounded DS/DNSKEY chain construction.
+- **Phase B — trust chain**: root trust anchor loading and bounded DS/DNSKEY chain construction. A bounded parser for locally provisioned DNSKEY master-file records is implemented; automatic trust-anchor updates remain out of scope.
 - **Phase C — negative proofs**: NSEC and NSEC3 proof validation.
 - **Phase D — CLI integration**: explicit DNSSEC validation mode and structured output. Never silently equate the resolver AD bit with local validation.
 
