@@ -7,8 +7,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Status describes the outcome of a DNSSEC validation attempt.
-// Secure must only be returned after the complete trust chain is validated.
 type Status string
 
 const (
@@ -18,15 +16,12 @@ const (
 	StatusIndeterminate Status = "indeterminate"
 )
 
-// Result is a conservative, explainable DNSSEC validation result.
 type Result struct {
-	Status  Status
-	Reason  string
-	Zone    string
+	Status Status
+	Reason string
+	Zone   string
 }
 
-// RRset contains records that share an owner name, class, and type.
-// RRSIG records are deliberately kept separate and are not members of an RRset.
 type RRset struct {
 	Name    string
 	Class   uint16
@@ -40,9 +35,6 @@ type rrsetKey struct {
 	typ   uint16
 }
 
-// GroupRRsets groups ordinary resource records by canonical owner name,
-// class, and type. The order of first appearance and the order of records
-// within each RRset are preserved. RRSIG records are excluded.
 func GroupRRsets(records []dns.RR) ([]RRset, error) {
 	groups := make([]RRset, 0)
 	indices := make(map[rrsetKey]int)
@@ -79,8 +71,6 @@ func GroupRRsets(records []dns.RR) ([]RRset, error) {
 	return groups, nil
 }
 
-// SignaturesForRRset returns RRSIG records that cover the supplied RRset.
-// Signatures are matched by owner name, class, and covered type.
 func SignaturesForRRset(rrset RRset, records []dns.RR) ([]*dns.RRSIG, error) {
 	if len(rrset.Records) == 0 {
 		return nil, fmt.Errorf("cannot collect signatures for an empty RRset")
