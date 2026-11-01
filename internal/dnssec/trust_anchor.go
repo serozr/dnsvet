@@ -10,27 +10,26 @@ import (
 )
 
 // TrustAnchor is a locally configured DNSKEY trusted independently of DNS.
-// The anchor must be provisioned out of band; it is never learned from the
-// DNS response being validated.
+// DNSKEY is retained for backwards compatibility. DNSKEYs allows multiple
+// independently provisioned keys for rollover and overlapping trust periods.
+// At least one configured key must authenticate the supplied DNSKEY RRset.
 type TrustAnchor struct {
 	Zone   string
 	DNSKEY *dns.DNSKEY
+	DNSKEYs []*dns.DNSKEY
 }
 
-// ValidateTrustAnchorDNSKEYSet authenticates a zone's DNSKEY RRset using an
-// explicitly configured DNSKEY trust anchor. It returns usable zone keys only
-// after the DNSKEY RRset signature has been verified by the pinned key.
-// DNSKEY records with Protocol values other than 3 remain part of the signed
-// RRset, but are not returned as usable keys.
+// ValidateTrustAnchorDNSKEYSet authenticates a zone's DNSKEY RRset using one
+// or more explicitly configured DNSKEY trust anchors. It returns usable zone
+// keys only after the RRset signature has been verified by a configured key
+// that is present in the RRset. Non-Protocol-3 records remain in the signed
+// RRset but are not returned as usable keys.
 func ValidateTrustAnchorDNSKEYSet(
 	rrset RRset,
 	signatures []*dns.RRSIG,
 	anchor TrustAnchor,
 	at time.Time,
 ) ([]*dns.DNSKEY, error) {
-	if anchor.DNSKEY == nil {
-		return nil, errors.New("trust anchor DNSKEY is nil")
-	}
 	if anchor.Zone == "" {
 		return nil, errors.New("trust anchor zone is empty")
 	}
@@ -42,19 +41,34 @@ func ValidateTrustAnchorDNSKEYSet(
 	}
 
 	zone := dns.Fqdn(anchor.Zone)
-	if !strings.EqualFold(dns.Fqdn(rrset.Name), zone) ||
-		!strings.EqualFold(dns.Fqdn(anchor.DNSKEY.Hdr.Name), zone) {
+	if !strings.EqualFold(dns.Fqdn(rrset.Name), zone) {
 		return nil, errors.New("trust anchor zone does not match DNSKEY RRset")
 	}
-	if anchor.DNSKEY.Protocol != 3 {
-		return nil, fmt.Errorf("invalid trust anchor DNSKEY protocol %d: want 3", anchor.DNSKEY.Protocol)
+
+	configured := make([]*dns.DNSKEY, 0, len(anchor.DNSKEYs)+1)
+	if anchor.DNSKEY != nil {
+		configured = append(configured, anchor.DNSKEY)
 	}
-	if anchor.DNSKEY.Hdr.Rrtype != dns.TypeDNSKEY ||
-		anchor.DNSKEY.Hdr.Class != rrset.Class {
-		return nil, errors.New("trust anchor DNSKEY metadata does not match the RRset")
+	configured = append(configured, anchor.DNSKEYs...)
+	if len(configured) == 0 {
+		return nil, errors.New("no trust anchor DNSKEYs configured")
 	}
 
-	var pinnedKey *dns.DNSKEY
+	for i, key := range configured {
+		if key == nil {
+			return nil, fmt.Errorf("trust anchor DNSKEY at index %d is nil", i)
+		}
+		if key.Protocol != 3 {
+			return nil, fmt.Errorf("invalid trust anchor DNSKEY protocol %d at index %d: want 3", key.Protocol, i)
+		}
+		if key.Hdr.Rrtype != dns.TypeDNSKEY ||
+			key.Hdr.Class != rrset.Class ||
+			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
+			return nil, fmt.Errorf("trust anchor DNSKEY at index %d metadata does not match the anchored zone and RRset", i)
+		}
+	}
+
+	presentAnchors := make([]*dns.DNSKEY, 0, len(configured))
 	authenticatedKeys := make([]*dns.DNSKEY, 0, len(rrset.Records))
 	for i, record := range rrset.Records {
 		key, ok := record.(*dns.DNSKEY)
@@ -69,15 +83,17 @@ func ValidateTrustAnchorDNSKEYSet(
 			continue
 		}
 		authenticatedKeys = append(authenticatedKeys, key)
-		if sameDNSKEY(key, anchor.DNSKEY) {
-			pinnedKey = key
+		for _, configuredKey := range configured {
+			if sameDNSKEY(key, configuredKey) && !containsDNSKEY(presentAnchors, key) {
+				presentAnchors = append(presentAnchors, key)
+			}
 		}
 	}
-	if pinnedKey == nil {
-		return nil, errors.New("configured trust anchor is absent from the usable DNSKEY RRset")
+	if len(presentAnchors) == 0 {
+		return nil, errors.New("none of the configured trust anchors are present in the usable DNSKEY RRset")
 	}
 
-	if err := VerifyRRset(rrset, signatures, []*dns.DNSKEY{pinnedKey}, at); err != nil {
+	if err := VerifyRRset(rrset, signatures, presentAnchors, at); err != nil {
 		return nil, fmt.Errorf("DNSKEY RRset signature verification failed: %w", err)
 	}
 	return authenticatedKeys, nil
