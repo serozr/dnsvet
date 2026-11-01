@@ -107,6 +107,20 @@ func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg
 }
 
 func validateResponseQuestion(response *dns.Msg, expected dns.Question) error {
+	if response == nil {
+		return fmt.Errorf("DNS response is nil")
+	}
+	if !response.Response {
+		return fmt.Errorf("DNS message is not marked as a response")
+	}
+	if len(response.Question) == 0 {
+		// Some error responses omit the echoed question. Preserve those responses
+		// for diagnostics; a successful response must identify the question.
+		if response.Rcode != dns.RcodeSuccess {
+			return nil
+		}
+		return fmt.Errorf("successful DNS response contains no question")
+	}
 	if len(response.Question) != 1 {
 		return fmt.Errorf("DNS response contains %d questions, want exactly 1", len(response.Question))
 	}
