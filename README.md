@@ -17,7 +17,7 @@ It is being built to inspect DNS resolver configuration, query behavior, availab
 
 ## Planned capabilities
 
-- DNS record queries over UDP and TCP.
+- DNS record queries over UDP and TCP, with optional EDNS DNSSEC (DO-bit) requests.
 - Resolver discovery from operating-system configuration.
 - Resolver benchmarking and comparison.
 - DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT).
@@ -45,6 +45,9 @@ go run ./cmd/dnsvet query example.com --server 1.1.1.1 --type A
 
 # Machine-readable JSON output
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --json
+
+# Request DNSSEC records (does not perform local validation)
+go run ./cmd/dnsvet query example.com --server 1.1.1.1 --dnssec --json
 
 # Query the root DNSKEY RRset
 go run ./cmd/dnsvet query . --server 1.1.1.1 --type DNSKEY

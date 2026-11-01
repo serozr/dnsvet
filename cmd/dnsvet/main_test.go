@@ -86,6 +86,7 @@ func TestParseQueryOptionsRejectsInvalidArguments(t *testing.T) {
 		{name: "zone transfer type is not allowed", args: []string{"example.com", "--type", "AXFR"}},
 		{name: "invalid timeout", args: []string{"example.com", "--timeout", "0s"}},
 		{name: "json flag rejects value", args: []string{"example.com", "--json=true"}},
+		{name: "dnssec flag rejects value", args: []string{"example.com", "--dnssec=true"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -177,6 +178,32 @@ func TestParseQueryOptionsRejectsTimeoutOverOneMinute(t *testing.T) {
 	if _, err := parseQueryOptions([]string{"example.com", "--timeout", "60s"}); err != nil {
 		t.Fatalf("parseQueryOptions() with 60s error = %v, want nil", err)
 	}
+}
+
+func TestRunQueryDNSSECJSONMetadata(t *testing.T) {
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil { t.Fatalf("listen for DNS test server: %v", err) }
+	defer packetConn.Close()
+	server := &dns.Server{
+		PacketConn: packetConn,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, request *dns.Msg) {
+			if opt := request.IsEdns0(); opt == nil || !opt.Do() {
+				t.Error("DNSSEC query did not set EDNS DO bit")
+			}
+			response := new(dns.Msg)
+			response.SetReply(request)
+			response.AuthenticatedData = true
+			_ = w.WriteMsg(response)
+		}),
+	}
+	go func() { _ = server.ActivateAndServe() }()
+	defer server.Shutdown()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"query", "example.test", "--server", packetConn.LocalAddr().String(), "--dnssec", "--json"}, &stdout, &stderr)
+	if code != 0 { t.Fatalf("run() exit code = %d; stderr = %q", code, stderr.String()) }
+	var output queryJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil { t.Fatalf("invalid JSON: %v", err) }
+	if !output.DNSSECRequested || !output.Authenticated { t.Fatalf("missing DNSSEC metadata: %+v", output) }
 }
 
 func TestRunQueryJSONOutput(t *testing.T) {

@@ -30,6 +30,16 @@ func New(timeout time.Duration) *Client {
 
 // Query sends one DNS question and retries over TCP if the UDP response is truncated.
 func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (*dns.Msg, time.Duration, error) {
+	return c.query(ctx, server, name, qtype, false)
+}
+
+// QueryWithDNSSEC requests DNSSEC records by setting the EDNS DO bit.
+// It does not validate DNSSEC signatures or the chain of trust.
+func (c *Client) QueryWithDNSSEC(ctx context.Context, server, name string, qtype uint16) (*dns.Msg, time.Duration, error) {
+	return c.query(ctx, server, name, qtype, true)
+}
+
+func (c *Client) query(ctx context.Context, server, name string, qtype uint16, requestDNSSEC bool) (*dns.Msg, time.Duration, error) {
 	if ctx == nil {
 		return nil, 0, fmt.Errorf("query context must not be nil")
 	}
@@ -51,6 +61,9 @@ func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (
 
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(asciiName), qtype)
+	if requestDNSSEC {
+		message.SetEdns0(1232, true)
+	}
 	started := time.Now()
 
 	response, err := c.exchange(ctx, resolver, message, "udp")

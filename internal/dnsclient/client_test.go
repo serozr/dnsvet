@@ -67,6 +67,21 @@ func startTCPTestServer(t *testing.T, listener net.Listener, handler func(*dns.M
 	go func() { _ = server.ActivateAndServe() }()
 }
 
+func TestQueryWithDNSSECRequestsDNSSECRecords(t *testing.T) {
+	server, _ := startUDPTestServer(t, func(request *dns.Msg) *dns.Msg {
+		opt := request.IsEdns0()
+		if opt == nil || !opt.Do() {
+			t.Error("DNSSEC query did not set the EDNS DO bit")
+		}
+		response := new(dns.Msg)
+		response.SetReply(request)
+		return response
+	})
+	if _, _, err := New(time.Second).QueryWithDNSSEC(context.Background(), server, "example.test", dns.TypeA); err != nil {
+		t.Fatalf("QueryWithDNSSEC() error = %v", err)
+	}
+}
+
 func TestQueryUDPReturnsDNSResponse(t *testing.T) {
 	answer, err := dns.NewRR("example.test. 60 IN A 192.0.2.10")
 	if err != nil {

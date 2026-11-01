@@ -28,6 +28,7 @@ type queryOptions struct {
 	timeout time.Duration
 	domain  string
 	json    bool
+	dnssec  bool
 }
 
 func main() {
@@ -83,7 +84,14 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1
 	}
-	response, elapsed, err := dnsclient.New(options.timeout).Query(ctx, resolver, options.domain, options.qtype)
+	client := dnsclient.New(options.timeout)
+	var response *dns.Msg
+	var elapsed time.Duration
+	if options.dnssec {
+		response, elapsed, err = client.QueryWithDNSSEC(ctx, resolver, options.domain, options.qtype)
+	} else {
+		response, elapsed, err = client.Query(ctx, resolver, options.domain, options.qtype)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1
@@ -91,6 +99,8 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 
 	if options.json {
 		output := queryJSONOutput{
+			DNSSECRequested: options.dnssec,
+			Authenticated:   response.AuthenticatedData,
 			Resolver: resolver,
 			Question: dns.Fqdn(options.domain),
 			Type:     dns.TypeToString[options.qtype],
@@ -122,6 +132,10 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "Response: %s (%d)\n", rcode, response.Rcode)
 	fmt.Fprintf(stdout, "Elapsed: %s\n", elapsed.Round(time.Microsecond))
+	if options.dnssec {
+		fmt.Fprintf(stdout, "DNSSEC requested: yes (DO bit)\n")
+		fmt.Fprintf(stdout, "Resolver AD bit: %t (resolver assertion; not locally validated)\n", response.AuthenticatedData)
+	}
 
 	if len(response.Answer) == 0 {
 		fmt.Fprintln(stdout, "Answers: none")
@@ -142,7 +156,9 @@ type queryJSONOutput struct {
 	Response string   `json:"response"`
 	RCode    int      `json:"rcode"`
 	Elapsed  string   `json:"elapsed"`
-	Answers  []string `json:"answers"`
+	Answers         []string `json:"answers"`
+	DNSSECRequested bool     `json:"dnssec_requested"`
+	Authenticated   bool     `json:"authenticated_data"`
 }
 
 func formatAnswer(record dns.RR) string {
@@ -188,7 +204,7 @@ func isSupportedQueryType(qtype uint16) bool {
 }
 
 func printQueryUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--json]")
+	fmt.Fprintln(w, "Usage: dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--dnssec] [--json]")
 	fmt.Fprintln(w, "Supported types: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, CAA, DS, DNSKEY, RRSIG, NSEC, NSEC3")
 }
 
@@ -228,6 +244,11 @@ func parseQueryOptions(args []string) (queryOptions, error) {
 				return options, fmt.Errorf("unsupported DNS record type %q", value)
 			}
 			options.qtype = qtype
+		case "--dnssec":
+			if hasValue {
+				return options, fmt.Errorf("--dnssec does not accept a value")
+			}
+			options.dnssec = true
 		case "--json":
 			if hasValue {
 				return options, fmt.Errorf("--json does not accept a value")
@@ -276,7 +297,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  query     Query a DNS record")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Query usage:")
-	fmt.Fprintln(w, "  dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--json]")
+	fmt.Fprintln(w, "  dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--dnssec] [--json]")
 	fmt.Fprintln(w, "  dnsvet query example.com --server 1.1.1.1 --type A")
-	fmt.Fprintln(w, "  dnsvet query example.com --json")
+	fmt.Fprintln(w, "  dnsvet query example.com --dnssec --json")
 }
