@@ -2,6 +2,7 @@ package dnssec
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -23,14 +24,18 @@ func LoadTrustAnchor(reader io.Reader) (TrustAnchor, error) {
 	if reader == nil {
 		return TrustAnchor{}, fmt.Errorf("trust anchor reader is nil")
 	}
+	data, err := io.ReadAll(io.LimitReader(reader, maxTrustAnchorFileSize+1))
+	if err != nil {
+		return TrustAnchor{}, fmt.Errorf("read trust anchor file: %w", err)
+	}
+	if len(data) > maxTrustAnchorFileSize {
+		return TrustAnchor{}, fmt.Errorf("trust anchor file exceeds %d bytes", maxTrustAnchorFileSize)
+	}
 
-	limited := io.LimitReader(reader, maxTrustAnchorFileSize+1)
-	scanner := bufio.NewScanner(limited)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 4096), maxTrustAnchorLineSize)
-
 	var anchor TrustAnchor
 	seen := make(map[string]struct{})
-	total := 0
 	for lineNumber := 1; scanner.Scan(); lineNumber++ {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, ";") {
@@ -62,24 +67,15 @@ func LoadTrustAnchor(reader io.Reader) (TrustAnchor, error) {
 		}
 		seen[identity] = struct{}{}
 		anchor.DNSKEYs = append(anchor.DNSKEYs, key)
-		total++
-		if total > maxTrustAnchorKeys {
+		if len(anchor.DNSKEYs) > maxTrustAnchorKeys {
 			return TrustAnchor{}, fmt.Errorf("trust anchor contains more than %d DNSKEY records", maxTrustAnchorKeys)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return TrustAnchor{}, fmt.Errorf("read trust anchor file: %w", err)
 	}
-	if anchor.Zone == "" {
+	if len(anchor.DNSKEYs) == 0 {
 		return TrustAnchor{}, fmt.Errorf("trust anchor file contains no DNSKEY records")
-	}
-	if total == 0 {
-		return TrustAnchor{}, fmt.Errorf("trust anchor file contains no DNSKEY records")
-	}
-	if extra, err := io.ReadAll(limited); err != nil {
-		return TrustAnchor{}, fmt.Errorf("read trust anchor file: %w", err)
-	} else if len(extra) > 0 {
-		return TrustAnchor{}, fmt.Errorf("trust anchor file exceeds %d bytes", maxTrustAnchorFileSize)
 	}
 	return anchor, nil
 }
