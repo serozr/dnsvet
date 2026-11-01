@@ -5,7 +5,7 @@
 
 ## Context
 
-ResolverGuard can query DNSSEC-related record types, but retrieving DNSKEY, DS, RRSIG, NSEC, or NSEC3 records is not DNSSEC validation. A recursive resolver's AD (Authenticated Data) bit is also not proof that ResolverGuard independently validated the answer.
+dnsvet can query DNSSEC-related record types, but retrieving DNSKEY, DS, RRSIG, NSEC, or NSEC3 records is not DNSSEC validation. A recursive resolver's AD (Authenticated Data) bit is also not proof that dnsvet independently validated the answer.
 
 DNSSEC validation must be explicit, explainable, bounded, and fail closed. An incorrect "secure" result is worse than an unavailable result.
 

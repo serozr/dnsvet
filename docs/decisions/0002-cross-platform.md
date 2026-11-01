@@ -5,7 +5,7 @@
 
 ## Context
 
-ResolverGuard targets Windows, Linux, and macOS. Platform-specific resolver discovery may be required, but the DNS query engine should remain portable.
+dnsvet targets Windows, Linux, and macOS. Platform-specific resolver discovery may be required, but the DNS query engine should remain portable.
 
 ## Decision
 

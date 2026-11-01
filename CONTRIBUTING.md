@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for considering a contribution to ResolverGuard.
+Thanks for considering a contribution to dnsvet.
 
 ## Development requirements
 

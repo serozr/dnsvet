@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-ResolverGuard is in early development. Security fixes are currently applied to the latest code on the `main` branch.
+dnsvet is in early development. Security fixes are currently applied to the latest code on the `main` branch.
 
 ## Reporting a vulnerability
 
@@ -14,4 +14,4 @@ Do not include credentials, private keys, or other secrets in a report.
 
 ## Safe-use principles
 
-ResolverGuard is designed for authorized, low-impact DNS diagnostics. It must not implement DNS flooding, denial-of-service, amplification, or exploitation features. Network operations should use bounded timeouts and conservative concurrency.
+dnsvet is designed for authorized, low-impact DNS diagnostics. It must not implement DNS flooding, denial-of-service, amplification, or exploitation features. Network operations should use bounded timeouts and conservative concurrency.

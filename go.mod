@@ -1,4 +1,4 @@
-module github.com/serozr/resolverguard
+module github.com/serozr/dnsvet
 
 go 1.23
 

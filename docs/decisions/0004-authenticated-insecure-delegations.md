@@ -5,7 +5,7 @@
 
 ## Context
 
-ResolverGuard can currently authenticate a supplied sequence of signed DS and DNSKEY RRsets. It does not yet validate NSEC or NSEC3 denial proofs, and `ValidateChain` deliberately rejects incomplete delegation material.
+dnsvet can currently authenticate a supplied sequence of signed DS and DNSKEY RRsets. It does not yet validate NSEC or NSEC3 denial proofs, and `ValidateChain` deliberately rejects incomplete delegation material.
 
 A missing DS RRset is not, by itself, proof that a child zone is insecure. The response may be incomplete, truncated, stale, forged, or obtained from an unauthenticated source. Treating absence as insecurity would create a downgrade path and could incorrectly label a bogus or indeterminate chain as insecure.
 
@@ -13,7 +13,7 @@ The DNSSEC result model already distinguishes Secure, Insecure, Bogus, and Indet
 
 ## Decision
 
-ResolverGuard MUST classify a delegation as **Insecure** only when it has authenticated evidence from the parent zone that no DS RRset exists at the delegation point.
+dnsvet MUST classify a delegation as **Insecure** only when it has authenticated evidence from the parent zone that no DS RRset exists at the delegation point.
 
 The evidence must be a valid denial proof (NSEC or NSEC3) whose signatures validate with the already-authenticated parent-zone DNSKEY set and whose semantics prove absence of DS for the exact delegation owner.
 

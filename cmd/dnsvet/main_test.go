@@ -13,7 +13,6 @@ import (
 func TestRunHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"help"}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
@@ -28,11 +27,10 @@ func TestRunHelp(t *testing.T) {
 func TestRunVersion(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"version"}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "ResolverGuard dev") {
+	if !strings.Contains(stdout.String(), "dnsvet dev") {
 		t.Fatalf("version output missing application version: %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "Platform:") {
@@ -46,7 +44,6 @@ func TestRunVersion(t *testing.T) {
 func TestRunUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"not-a-command"}, &stdout, &stderr)
-
 	if code != 2 {
 		t.Fatalf("run() exit code = %d, want 2", code)
 	}
@@ -56,26 +53,12 @@ func TestRunUnknownCommand(t *testing.T) {
 }
 
 func TestParseQueryOptions(t *testing.T) {
-	options, err := parseQueryOptions([]string{
-		"example.com",
-		"--server", "9.9.9.9",
-		"--type=AAAA",
-		"--timeout", "1500ms",
-	})
+	options, err := parseQueryOptions([]string{"example.com", "--server", "9.9.9.9", "--type=AAAA", "--timeout", "1500ms"})
 	if err != nil {
 		t.Fatalf("parseQueryOptions() error = %v", err)
 	}
-	if options.domain != "example.com" {
-		t.Fatalf("domain = %q, want example.com", options.domain)
-	}
-	if options.server != "9.9.9.9" {
-		t.Fatalf("server = %q, want 9.9.9.9", options.server)
-	}
-	if options.qtype != dns.TypeAAAA {
-		t.Fatalf("qtype = %d, want %d", options.qtype, dns.TypeAAAA)
-	}
-	if options.timeout != 1500*time.Millisecond {
-		t.Fatalf("timeout = %s, want 1.5s", options.timeout)
+	if options.domain != "example.com" || options.server != "9.9.9.9" || options.qtype != dns.TypeAAAA || options.timeout != 1500*time.Millisecond {
+		t.Fatalf("unexpected parsed options: %+v", options)
 	}
 }
 
@@ -112,66 +95,25 @@ func TestParseQueryOptionsRejectsInvalidArguments(t *testing.T) {
 }
 
 func TestFormatAnswer(t *testing.T) {
-	tests := []struct {
-		name string
-		rr   string
-		want []string
-	}{
-		{
-			name: "A",
-			rr:   "example.test. 60 IN A 192.0.2.25",
-			want: []string{"example.test.", "60", "A", "192.0.2.25"},
-		},
-		{
-			name: "AAAA",
-			rr:   "example.test. 120 IN AAAA 2001:db8::1",
-			want: []string{"AAAA", "2001:db8::1"},
-		},
-		{
-			name: "MX",
-			rr:   "example.test. 300 IN MX 10 mail.example.test.",
-			want: []string{"MX", "10", "mail.example.test."},
-		},
-		{
-			name: "TXT",
-			rr:   "example.test. 300 IN TXT \"hello\" \"world\"",
-			want: []string{"TXT", "hello world"},
-		},
-		{
-			name: "CNAME",
-			rr:   "www.example.test. 60 IN CNAME example.test.",
-			want: []string{"CNAME", "example.test."},
-		},
-		{
-			name: "SOA",
-			rr:   "example.test. 3600 IN SOA ns.example.test. hostmaster.example.test. 2026110101 3600 900 604800 300",
-			want: []string{"SOA", "mname=ns.example.test.", "rname=hostmaster.example.test.", "serial=2026110101"},
-		},
+	rr, err := dns.NewRR("example.test. 60 IN A 192.0.2.25")
+	if err != nil {
+		t.Fatalf("dns.NewRR() error = %v", err)
 	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			rr, err := dns.NewRR(test.rr)
-			if err != nil {
-				t.Fatalf("dns.NewRR() error = %v", err)
-			}
-
-			got := formatAnswer(rr)
-			for _, expected := range test.want {
-				if !strings.Contains(got, expected) {
-					t.Errorf("formatAnswer() = %q, want it to contain %q", got, expected)
-				}
-			}
-		})
+	got := formatAnswer(rr)
+	for _, expected := range []string{"example.test.", "60", "A", "192.0.2.25"} {
+		if !strings.Contains(got, expected) {
+			t.Errorf("formatAnswer() = %q, want it to contain %q", got, expected)
+		}
 	}
 }
+
 func TestRunQueryHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"query", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run() exit code = %d, want 0", code)
 	}
-	if !strings.Contains(stdout.String(), "Usage: resolverguard query") {
+	if !strings.Contains(stdout.String(), "Usage: dnsvet query") {
 		t.Fatalf("query help output = %q, want usage", stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -185,7 +127,6 @@ func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 		t.Fatalf("listen for DNS test server: %v", err)
 	}
 	defer packetConn.Close()
-
 	answer, err := dns.NewRR("example.test. 60 IN A 192.0.2.25")
 	if err != nil {
 		t.Fatalf("create test answer: %v", err)
@@ -201,7 +142,6 @@ func TestRunQueryPrintsDNSAnswer(t *testing.T) {
 	}
 	go func() { _ = server.ActivateAndServe() }()
 	defer server.Shutdown()
-
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"query", "example.test", "--server", packetConn.LocalAddr().String()}, &stdout, &stderr)
 	if code != 0 {

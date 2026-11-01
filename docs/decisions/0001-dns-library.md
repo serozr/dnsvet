@@ -5,7 +5,7 @@
 
 ## Context
 
-ResolverGuard needs DNS message construction, parsing, record handling, and protocol support. Reimplementing DNS wire-format behavior would add avoidable complexity and risk.
+dnsvet needs DNS message construction, parsing, record handling, and protocol support. Reimplementing DNS wire-format behavior would add avoidable complexity and risk.
 
 ## Decision
 
@@ -15,4 +15,4 @@ Use `github.com/miekg/dns` as the initial DNS protocol library. Keep its use beh
 
 - DNS message handling can rely on a mature implementation.
 - The project must track dependency updates and review security advisories.
-- Transport and application behavior remain covered by ResolverGuard tests.
+- Transport and application behavior remain covered by dnsvet tests.

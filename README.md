@@ -1,6 +1,6 @@
-# ResolverGuard
+# dnsvet
 
-**ResolverGuard** is an open-source DNS diagnostics and intelligence toolkit written in Go.
+**dnsvet** is an open-source DNS diagnostics and intelligence toolkit written in Go.
 
 It is being built to inspect DNS resolver configuration, query behavior, availability, performance, privacy characteristics, and security indicators through a cross-platform command-line interface.
 
@@ -32,18 +32,18 @@ Features will be documented as implemented only after they have working tests.
 Requires Go 1.23 or later.
 
 ```bash
-git clone https://github.com/serozr/resolverguard.git
-cd resolverguard
+git clone https://github.com/serozr/dnsvet.git
+cd dnsvet
 go mod tidy
 go test ./...
-go run ./cmd/resolverguard help
+go run ./cmd/dnsvet help
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## Responsible use
 
-Use ResolverGuard only on systems and networks you own or are authorized to assess. It is intended for low-impact diagnostics, not denial-of-service, flooding, amplification, or exploitation.
+Use dnsvet only on systems and networks you own or are authorized to assess. It is intended for low-impact diagnostics, not denial-of-service, flooding, amplification, or exploitation.
 
 ## License
 

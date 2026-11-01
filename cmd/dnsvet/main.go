@@ -12,7 +12,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/serozr/resolverguard/internal/dnsclient"
+	"github.com/serozr/dnsvet/internal/dnsclient"
 )
 
 var (
@@ -43,7 +43,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	case "version", "--version", "-v":
-		fmt.Fprintf(stdout, "ResolverGuard %s\n", version)
+		fmt.Fprintf(stdout, "dnsvet %s\n", version)
 		fmt.Fprintf(stdout, "Commit: %s\n", commit)
 		fmt.Fprintf(stdout, "Built: %s\n", buildDate)
 		fmt.Fprintf(stdout, "Go: %s\n", runtime.Version())
@@ -151,7 +151,7 @@ func isSupportedQueryType(qtype uint16) bool {
 }
 
 func printQueryUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "Usage: dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
 	fmt.Fprintln(w, "Supported types: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, CAA, DS, DNSKEY, RRSIG, NSEC, NSEC3")
 }
 
@@ -223,10 +223,10 @@ func parseQueryOptions(args []string) (queryOptions, error) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "ResolverGuard - DNS diagnostics toolkit")
+	fmt.Fprintln(w, "dnsvet - DNS diagnostics toolkit")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  resolverguard <command>")
+	fmt.Fprintln(w, "  dnsvet <command>")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  help      Show this help")
@@ -234,6 +234,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  query     Query a DNS record")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Query usage:")
-	fmt.Fprintln(w, "  resolverguard query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
-	fmt.Fprintln(w, "  resolverguard query example.com --server 1.1.1.1 --type A")
+	fmt.Fprintln(w, "  dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "  dnsvet query example.com --server 1.1.1.1 --type A")
 }
