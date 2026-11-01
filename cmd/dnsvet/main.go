@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +27,7 @@ type queryOptions struct {
 	qtype   uint16
 	timeout time.Duration
 	domain  string
+	json    bool
 }
 
 func main() {
@@ -108,6 +110,16 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+type queryJSONOutput struct {
+	Resolver string   `json:"resolver"`
+	Question string   `json:"question"`
+	Type     string   `json:"type"`
+	Response string   `json:"response"`
+	RCode    int      `json:"rcode"`
+	Elapsed  string   `json:"elapsed"`
+	Answers  []string `json:"answers"`
+}
+
 func formatAnswer(record dns.RR) string {
 	header := record.Header()
 	prefix := fmt.Sprintf("%s %d IN %s", header.Name, header.Ttl, dns.TypeToString[header.Rrtype])
@@ -151,7 +163,7 @@ func isSupportedQueryType(qtype uint16) bool {
 }
 
 func printQueryUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "Usage: dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--json]")
 	fmt.Fprintln(w, "Supported types: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT, CAA, DS, DNSKEY, RRSIG, NSEC, NSEC3")
 }
 
@@ -191,6 +203,11 @@ func parseQueryOptions(args []string) (queryOptions, error) {
 				return options, fmt.Errorf("unsupported DNS record type %q", value)
 			}
 			options.qtype = qtype
+		case "--json":
+			if hasValue {
+				return options, fmt.Errorf("--json does not accept a value")
+			}
+			options.json = true
 		case "--timeout":
 			if !hasValue {
 				i++
@@ -234,6 +251,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  query     Query a DNS record")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Query usage:")
-	fmt.Fprintln(w, "  dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>]")
+	fmt.Fprintln(w, "  dnsvet query <domain> [--server <address>] [--type <record>] [--timeout <duration>] [--json]")
 	fmt.Fprintln(w, "  dnsvet query example.com --server 1.1.1.1 --type A")
+	fmt.Fprintln(w, "  dnsvet query example.com --json")
 }

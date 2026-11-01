@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"net"
 	"strings"
 	"testing"
@@ -84,6 +85,7 @@ func TestParseQueryOptionsRejectsInvalidArguments(t *testing.T) {
 		{name: "unknown record type", args: []string{"example.com", "--type", "INVALID"}},
 		{name: "zone transfer type is not allowed", args: []string{"example.com", "--type", "AXFR"}},
 		{name: "invalid timeout", args: []string{"example.com", "--timeout", "0s"}},
+		{name: "json flag rejects value", args: []string{"example.com", "--json=true"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -174,5 +176,50 @@ func TestParseQueryOptionsRejectsTimeoutOverOneMinute(t *testing.T) {
 	}
 	if _, err := parseQueryOptions([]string{"example.com", "--timeout", "60s"}); err != nil {
 		t.Fatalf("parseQueryOptions() with 60s error = %v, want nil", err)
+	}
+}
+
+func TestRunQueryJSONOutput(t *testing.T) {
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for DNS test server: %v", err)
+	}
+	defer packetConn.Close()
+	answer, err := dns.NewRR("example.test. 60 IN A 192.0.2.25")
+	if err != nil {
+		t.Fatalf("create test answer: %v", err)
+	}
+	server := &dns.Server{
+		PacketConn: packetConn,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, request *dns.Msg) {
+			response := new(dns.Msg)
+			response.SetReply(request)
+			response.Answer = append(response.Answer, answer)
+			_ = w.WriteMsg(response)
+		}),
+	}
+	go func() { _ = server.ActivateAndServe() }()
+	defer server.Shutdown()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"query", "example.test", "--server", packetConn.LocalAddr().String(), "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	var output queryJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output is invalid: %v; output = %q", err, stdout.String())
+	}
+	if output.Question != "example.test." || output.Type != "A" || output.Response != "NOERROR" || output.RCode != dns.RcodeSuccess {
+		t.Fatalf("unexpected JSON response metadata: %+v", output)
+	}
+	if len(output.Answers) != 1 || !strings.Contains(output.Answers[0], "192.0.2.25") {
+		t.Fatalf("unexpected JSON answers: %+v", output.Answers)
+	}
+	if output.Elapsed == "" || output.Resolver == "" {
+		t.Fatalf("JSON output is missing resolver or elapsed time: %+v", output)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
 	}
 }

@@ -43,6 +43,9 @@ go run ./cmd/dnsvet help
 # Query an A record
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --type A
 
+# Machine-readable JSON output
+go run ./cmd/dnsvet query example.com --server 1.1.1.1 --json
+
 # Query the root DNSKEY RRset
 go run ./cmd/dnsvet query . --server 1.1.1.1 --type DNSKEY
 ```
