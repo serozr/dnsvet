@@ -41,7 +41,8 @@ func ValidateChain(
 	if len(delegations) > MaxDelegationDepth {
 		return ChainResult{}, fmt.Errorf("delegation depth %d exceeds maximum %d", len(delegations), MaxDelegationDepth)
 	}
-	if anchor.Zone == "" || !dns.IsDomainName(dns.Fqdn(anchor.Zone)) {
+	_, validAnchorZone := dns.IsDomainName(dns.Fqdn(anchor.Zone))
+	if anchor.Zone == "" || !validAnchorZone {
 		return ChainResult{}, fmt.Errorf("invalid trust anchor zone %q", anchor.Zone)
 	}
 	keys, err := ValidateTrustAnchorDNSKEYSet(anchorRRset, anchorSignatures, anchor, at)

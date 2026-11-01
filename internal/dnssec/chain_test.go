@@ -31,18 +31,27 @@ func TestValidateChainWithNoDelegationsReturnsAnchorZone(t *testing.T) {
 func TestValidateChainAuthenticatesDelegation(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
-	anchorSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY, Records: []dns.RR{anchorKey}}
+	anchorSet := RRset{
+		Name:    "example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
 	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
 
 	childKey, childSigner := makeSigningKey(t, "child.example.test.")
 	childSet := RRset{
-		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Name:    "child.example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
 		Records: []dns.RR{childKey},
 	}
 	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
 
 	dsSet := RRset{
-		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Name:    "child.example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDS,
 		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
 	}
 	dsSig := signTestRRset(t, dsSet, anchorKey, anchorSigner, at)
@@ -51,7 +60,12 @@ func TestValidateChainAuthenticatesDelegation(t *testing.T) {
 		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
 		anchorSet,
 		[]*dns.RRSIG{anchorSig},
-		[]Delegation{{DSRRset: dsSet, DSSignatures: []*dns.RRSIG{dsSig}, DNSKEYRRset: childSet, DNSKEYSignatures: []*dns.RRSIG{childSig}}},
+		[]Delegation{{
+			DSRRset:          dsSet,
+			DSSignatures:     []*dns.RRSIG{dsSig},
+			DNSKEYRRset:      childSet,
+			DNSKEYSignatures: []*dns.RRSIG{childSig},
+		}},
 		at,
 	)
 	if err != nil {
@@ -65,13 +79,28 @@ func TestValidateChainAuthenticatesDelegation(t *testing.T) {
 func TestValidateChainRejectsTamperedChildDNSKEYSet(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
-	anchorSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY, Records: []dns.RR{anchorKey}}
+	anchorSet := RRset{
+		Name:    "example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
 	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
 
 	childKey, childSigner := makeSigningKey(t, "child.example.test.")
-	childSet := RRset{Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY, Records: []dns.RR{childKey}}
+	childSet := RRset{
+		Name:    "child.example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
+		Records: []dns.RR{childKey},
+	}
 	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
-	dsSet := RRset{Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS, Records: []dns.RR{childKey.ToDS(dns.SHA256)}}
+	dsSet := RRset{
+		Name:    "child.example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
 	dsSig := signTestRRset(t, dsSet, anchorKey, anchorSigner, at)
 	childSet.Records[0].(*dns.DNSKEY).PublicKey += "A"
 
@@ -79,7 +108,12 @@ func TestValidateChainRejectsTamperedChildDNSKEYSet(t *testing.T) {
 		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
 		anchorSet,
 		[]*dns.RRSIG{anchorSig},
-		[]Delegation{{DSRRset: dsSet, DSSignatures: []*dns.RRSIG{dsSig}, DNSKEYRRset: childSet, DNSKEYSignatures: []*dns.RRSIG{childSig}}},
+		[]Delegation{{
+			DSRRset:          dsSet,
+			DSSignatures:     []*dns.RRSIG{dsSig},
+			DNSKEYRRset:      childSet,
+			DNSKEYSignatures: []*dns.RRSIG{childSig},
+		}},
 		at,
 	)
 	if !errors.Is(err, ErrNoValidSignature) {
@@ -99,8 +133,14 @@ func TestValidateChainRejectsMismatchedDSAndDNSKEYOwners(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, key := signedDNSKEYSet(t, at)
 	delegation := Delegation{
-		DSRRset: RRset{Name: "child.example.test.", Type: dns.TypeDS},
-		DNSKEYRRset: RRset{Name: "other.example.test.", Type: dns.TypeDNSKEY},
+		DSRRset: RRset{
+			Name: "child.example.test.",
+			Type: dns.TypeDS,
+		},
+		DNSKEYRRset: RRset{
+			Name: "other.example.test.",
+			Type: dns.TypeDNSKEY,
+		},
 	}
 	_, err := ValidateChain(
 		TrustAnchor{Zone: "example.test.", DNSKEY: key},
@@ -117,9 +157,14 @@ func TestValidateChainRejectsMismatchedDSAndDNSKEYOwners(t *testing.T) {
 func signTestRRset(t *testing.T, rrset RRset, key *dns.DNSKEY, signer crypto.Signer, at time.Time) *dns.RRSIG {
 	t.Helper()
 	sig := &dns.RRSIG{
-		Hdr: dns.RR_Header{Name: rrset.Name, Rrtype: dns.TypeRRSIG, Class: rrset.Class, Ttl: 3600},
-		Algorithm: key.Algorithm, Expiration: uint32(at.Add(time.Hour).Unix()),
-		Inception: uint32(at.Add(-time.Hour).Unix()), KeyTag: key.KeyTag(), SignerName: key.Hdr.Name,
+		Hdr: dns.RR_Header{
+			Name: rrset.Name, Rrtype: dns.TypeRRSIG, Class: rrset.Class, Ttl: 3600,
+		},
+		Algorithm:  key.Algorithm,
+		Expiration: uint32(at.Add(time.Hour).Unix()),
+		Inception:  uint32(at.Add(-time.Hour).Unix()),
+		KeyTag:     key.KeyTag(),
+		SignerName: key.Hdr.Name,
 	}
 	if err := sig.Sign(signer, rrset.Records); err != nil {
 		t.Fatalf("RRSIG.Sign(): %v", err)
