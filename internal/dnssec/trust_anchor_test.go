@@ -78,7 +78,7 @@ func TestValidateTrustAnchorDNSKEYSetRejectsUnpinnedKey(t *testing.T) {
 		TrustAnchor{Zone: "example.test.", DNSKEY: otherKey},
 		at,
 	)
-	if err == nil || !strings.Contains(err.Error(), "absent") {
+	if err == nil || !strings.Contains(err.Error(), "none of the configured") {
 		t.Fatalf("error = %v, want absent trust anchor error", err)
 	}
 }
