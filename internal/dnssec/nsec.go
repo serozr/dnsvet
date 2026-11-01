@@ -1,6 +1,11 @@
 package dnssec
 
-import "github.com/miekg/dns"
+import (
+	"strings"
+	"unicode"
+
+	"github.com/miekg/dns"
+)
 
 // NSECIntervalCovers reports whether name is strictly covered by the
 // circular canonical DNSSEC interval (owner, nextDomain) represented by an
@@ -15,7 +20,9 @@ import "github.com/miekg/dns"
 // NSEC RR, validate its bitmap, or enforce that name belongs to a particular
 // zone; callers must perform those checks separately.
 func NSECIntervalCovers(owner, nextDomain, name string) bool {
-	if !validDNSName(owner) || !validDNSName(nextDomain) || !validDNSName(name) {
+	if !validNSECIntervalName(owner) ||
+		!validNSECIntervalName(nextDomain) ||
+		!validNSECIntervalName(name) {
 		return false
 	}
 
@@ -43,4 +50,16 @@ func NSECIntervalCovers(owner, nextDomain, name string) bool {
 
 	// The interval wraps around the end of canonical DNS name order.
 	return ownerToName < 0 || nameToNext < 0
+}
+
+// validNSECIntervalName rejects raw whitespace and control characters in
+// presentation-format names. DNS labels can contain arbitrary octets, but
+// those octets must be escaped in textual form.
+func validNSECIntervalName(name string) bool {
+	if !validDNSName(name) {
+		return false
+	}
+	return !strings.ContainsFunc(name, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	})
 }
