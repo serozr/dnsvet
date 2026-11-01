@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/idna"
@@ -173,6 +174,11 @@ func normalizeDNSName(name string) (string, error) {
 			return "", fmt.Errorf("invalid DNS name %q: unsupported character %q", name, character)
 		}
 		if !ascii {
+			for _, character := range label {
+				if unicode.IsSymbol(character) {
+					return "", fmt.Errorf("invalid internationalized DNS label %q: symbol characters are not permitted", label)
+				}
+			}
 			registrationProfile := idna.New(idna.ValidateForRegistration())
 			encoded, err := registrationProfile.ToASCII(label)
 			if err != nil {
