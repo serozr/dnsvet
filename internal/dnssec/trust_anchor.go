@@ -14,8 +14,8 @@ import (
 // independently provisioned keys for rollover and overlapping trust periods.
 // At least one configured key must authenticate the supplied DNSKEY RRset.
 type TrustAnchor struct {
-	Zone   string
-	DNSKEY *dns.DNSKEY
+	Zone    string
+	DNSKEY  *dns.DNSKEY
 	DNSKEYs []*dns.DNSKEY
 }
 
