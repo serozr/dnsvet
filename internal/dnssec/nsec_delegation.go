@@ -1,6 +1,7 @@
 package dnssec
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -77,6 +78,9 @@ func ValidateInsecureDelegationNSEC(
 	if !isWithinZone(parent, nsec.NextDomain) {
 		return invalid("NSEC next-domain name is outside the parent zone")
 	}
+	if canonicalNameOrder(child, nsec.NextDomain) >= 0 {
+		return invalid("NSEC next-domain name does not follow its owner in canonical order")
+	}
 
 	hasNS := false
 	hasDS := false
@@ -117,6 +121,30 @@ func ValidateInsecureDelegationNSEC(
 	return NSECProofResult{
 		Status: NSECProofProven,
 		Reason: "parent-authenticated delegation-point NSEC bitmap omits DS",
+	}
+}
+
+// canonicalNameOrder compares DNS names using canonical DNSSEC ordering:
+// labels are compared from the root toward the leaf, case-insensitively.
+func canonicalNameOrder(a, b string) int {
+	aLabels := dns.SplitDomainName(strings.ToLower(dns.Fqdn(a)))
+	bLabels := dns.SplitDomainName(strings.ToLower(dns.Fqdn(b)))
+
+	for i, j := len(aLabels)-1, len(bLabels)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
+		if cmp := bytes.Compare([]byte(aLabels[i]), []byte(bLabels[j])); cmp != 0 {
+			if cmp < 0 {
+				return -1
+			}
+			return 1
+		}
+	}
+	switch {
+	case len(aLabels) < len(bLabels):
+		return -1
+	case len(aLabels) > len(bLabels):
+		return 1
+	default:
+		return 0
 	}
 }
 
