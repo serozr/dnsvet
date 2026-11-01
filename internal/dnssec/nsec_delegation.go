@@ -28,7 +28,7 @@ type NSECProofResult struct {
 
 // ValidateInsecureDelegationNSEC validates a parent-signed NSEC RRset whose
 // owner is exactly the delegation point. The NSEC bitmap must contain NS and
-// omit DS. Parent DNSKEYs must already be authenticated by the caller.
+// omit both DS and SOA. Parent DNSKEYs must already be authenticated by caller.
 //
 // This narrow primitive does not implement NSEC interval proofs, wildcard
 // proofs, NXDOMAIN/NODATA validation, or NSEC3.
@@ -78,22 +78,31 @@ func ValidateInsecureDelegationNSEC(
 	if !isWithinZone(parent, nsec.NextDomain) {
 		return invalid("NSEC next-domain name is outside the parent zone")
 	}
-	if canonicalNameOrder(child, nsec.NextDomain) >= 0 {
+	// The final NSEC in a zone points back to the zone apex. This is the
+	// canonical-order wrap-around case defined by RFC 4034 section 4.1.1.
+	next := dns.Fqdn(nsec.NextDomain)
+	if !strings.EqualFold(next, parent) && canonicalNameOrder(child, next) >= 0 {
 		return invalid("NSEC next-domain name does not follow its owner in canonical order")
 	}
 
 	hasNS := false
 	hasDS := false
+	hasSOA := false
 	for _, typ := range nsec.TypeBitMap {
 		switch typ {
 		case dns.TypeNS:
 			hasNS = true
 		case dns.TypeDS:
 			hasDS = true
+		case dns.TypeSOA:
+			hasSOA = true
 		}
 	}
 	if !hasNS {
 		return invalid("delegation-point NSEC bitmap does not contain NS")
+	}
+	if hasSOA {
+		return invalid("delegation-point NSEC bitmap contains SOA")
 	}
 	if hasDS {
 		return notProven("NSEC bitmap contains DS")
@@ -120,7 +129,7 @@ func ValidateInsecureDelegationNSEC(
 	}
 	return NSECProofResult{
 		Status: NSECProofProven,
-		Reason: "parent-authenticated delegation-point NSEC bitmap omits DS",
+		Reason: "parent-authenticated delegation-point NSEC bitmap omits DS and SOA",
 	}
 }
 
