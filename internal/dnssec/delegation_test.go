@@ -183,18 +183,38 @@ func TestValidateDelegationDSIgnoresNonProtocolThreeKeys(t *testing.T) {
 	}
 }
 
-func TestValidateDelegationDSPrefersSHA256OverSHA1(t *testing.T) {
+func TestValidateDelegationDSPrefersSHA256OverSHA1ForSameKey(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	parentKey, parentSigner := makeSigningKey(t, "test.")
 	childKey, _ := makeSigningKey(t, "example.test.")
-	sha1DS := childKey.ToDS(dns.SHA1)
-	otherChildKey, _ := makeSigningKey(t, "example.test.")
-	sha256DS := otherChildKey.ToDS(dns.SHA256)
-	dsSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS, Records: []dns.RR{sha1DS, sha256DS}}
-	dsSignature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
-	_, err := ValidateDelegationDS("test.", dsSet, []*dns.RRSIG{dsSignature}, []*dns.DNSKEY{parentKey}, []*dns.DNSKEY{childKey}, at)
-	if !errors.Is(err, ErrNoDelegationKey) {
-		t.Fatalf("error = %v, want SHA-1 fallback ignored when SHA-256 is present", err)
+	dsSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA1), childKey.ToDS(dns.SHA256)}}
+	signature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+	matched, err := ValidateDelegationDS("test.", dsSet, []*dns.RRSIG{signature},
+		[]*dns.DNSKEY{parentKey}, []*dns.DNSKEY{childKey}, at)
+	if err != nil {
+		t.Fatalf("ValidateDelegationDS() error = %v", err)
+	}
+	if len(matched) != 1 || !sameDNSKEY(matched[0], childKey) {
+		t.Fatalf("matched keys = %d, want SHA-256 match for same key", len(matched))
+	}
+}
+
+func TestValidateDelegationDSPreservesSHA1ForDifferentKey(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	parentKey, parentSigner := makeSigningKey(t, "test.")
+	sha1Child, _ := makeSigningKey(t, "example.test.")
+	sha256Child, _ := makeSigningKey(t, "example.test.")
+	dsSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{sha1Child.ToDS(dns.SHA1), sha256Child.ToDS(dns.SHA256)}}
+	signature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+	matched, err := ValidateDelegationDS("test.", dsSet, []*dns.RRSIG{signature},
+		[]*dns.DNSKEY{parentKey}, []*dns.DNSKEY{sha1Child, sha256Child}, at)
+	if err != nil {
+		t.Fatalf("ValidateDelegationDS() error = %v", err)
+	}
+	if len(matched) != 2 {
+		t.Fatalf("matched keys = %d, want both distinct keys", len(matched))
 	}
 }
 
@@ -210,5 +230,20 @@ func TestValidateDelegationDSAcceptsSHA1WhenSHA256IsAbsent(t *testing.T) {
 	}
 	if len(matched) != 1 || !sameDNSKEY(matched[0], childKey) {
 		t.Fatalf("matched keys = %d, want SHA-1 legacy match", len(matched))
+	}
+}
+
+func TestIsChildZoneRequiresImmediateChild(t *testing.T) {
+	if !isChildZone("example.test.", "child.example.test.") {
+		t.Fatal("immediate child was rejected")
+	}
+	if isChildZone("example.test.", "grandchild.child.example.test.") {
+		t.Fatal("grandchild was accepted as immediate child")
+	}
+	if !isChildZone(".", "test.") {
+		t.Fatal("top-level zone was rejected as a child of root")
+	}
+	if isChildZone(".", "child.test.") {
+		t.Fatal("multi-label descendant was accepted as immediate child of root")
 	}
 }

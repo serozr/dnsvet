@@ -80,11 +80,12 @@ func ValidateDelegationDS(
 	// the authenticated DS RRset also contains SHA-256 DS records.
 	// Verify the complete RRset above, then apply this preference only
 	// to the DS-to-DNSKEY matching stage.
-	hasSHA256 := false
+	// Prefer SHA-256 over SHA-1 only for the same key identity.
+	hasSHA256ForKey := make(map[[2]uint16]bool)
 	for _, record := range dsRRset.Records {
-		if record.(*dns.DS).DigestType == dns.SHA256 {
-			hasSHA256 = true
-			break
+		ds := record.(*dns.DS)
+		if ds.DigestType == dns.SHA256 {
+			hasSHA256ForKey[[2]uint16{ds.KeyTag, uint16(ds.Algorithm)}] = true
 		}
 	}
 
@@ -93,7 +94,8 @@ func ValidateDelegationDS(
 	supportedDigests := 0
 	for _, record := range dsRRset.Records {
 		ds := record.(*dns.DS)
-		if hasSHA256 && ds.DigestType == dns.SHA1 {
+		keyID := [2]uint16{ds.KeyTag, uint16(ds.Algorithm)}
+		if ds.DigestType == dns.SHA1 && hasSHA256ForKey[keyID] {
 			continue
 		}
 		for _, key := range childKeys {
@@ -132,9 +134,13 @@ func isChildZone(parent, child string) bool {
 	parent = strings.ToLower(dns.Fqdn(parent))
 	child = strings.ToLower(dns.Fqdn(child))
 	if parent == "." {
-		return child != "." && strings.HasSuffix(child, ".")
+		return child != "." && strings.Count(strings.TrimSuffix(child, "."), ".") == 0
 	}
-	return child != parent && strings.HasSuffix(child, "."+parent)
+	if child == parent || !strings.HasSuffix(child, "."+parent) {
+		return false
+	}
+	prefix := strings.TrimSuffix(child, parent)
+	return strings.HasSuffix(prefix, ".") && strings.Count(strings.TrimSuffix(prefix, "."), ".") == 0
 }
 
 func containsDNSKEY(keys []*dns.DNSKEY, candidate *dns.DNSKEY) bool {

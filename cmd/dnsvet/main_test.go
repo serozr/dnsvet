@@ -167,3 +167,12 @@ func TestRunQueryReportsDNSClientErrors(t *testing.T) {
 		t.Fatalf("error output = %q, want DNS query failure", stderr.String())
 	}
 }
+
+func TestParseQueryOptionsRejectsTimeoutOverOneMinute(t *testing.T) {
+	if _, err := parseQueryOptions([]string{"example.com", "--timeout", "61s"}); err == nil {
+		t.Fatal("parseQueryOptions() error = nil, want timeout upper-bound error")
+	}
+	if _, err := parseQueryOptions([]string{"example.com", "--timeout", "60s"}); err != nil {
+		t.Fatalf("parseQueryOptions() with 60s error = %v, want nil", err)
+	}
+}

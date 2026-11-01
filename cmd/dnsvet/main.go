@@ -200,8 +200,8 @@ func parseQueryOptions(args []string) (queryOptions, error) {
 				value = args[i]
 			}
 			timeout, err := time.ParseDuration(value)
-			if err != nil || timeout <= 0 {
-				return options, fmt.Errorf("invalid timeout %q: use a positive duration such as 2s", value)
+			if err != nil || timeout <= 0 || timeout > 60*time.Second {
+				return options, fmt.Errorf("invalid timeout %q: use a positive duration up to 60s, such as 2s", value)
 			}
 			options.timeout = timeout
 		default:

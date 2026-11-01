@@ -27,6 +27,8 @@ It is being built to inspect DNS resolver configuration, query behavior, availab
 
 Features will be documented as implemented only after they have working tests.
 
+The current DNSSEC package contains validation primitives for RRsets, DS/DNSKEY matching, trust anchors, and supplied delegation chains. It is not yet a complete network-recursive DNSSEC validator; authenticated negative-proof validation and CLI integration remain in development.
+
 ## Getting started
 
 Requires Go 1.23 or later.
@@ -34,9 +36,15 @@ Requires Go 1.23 or later.
 ```bash
 git clone https://github.com/serozr/dnsvet.git
 cd dnsvet
-go mod tidy
+go mod download
 go test ./...
 go run ./cmd/dnsvet help
+
+# Query an A record
+go run ./cmd/dnsvet query example.com --server 1.1.1.1 --type A
+
+# Query the root DNSKEY RRset
+go run ./cmd/dnsvet query . --server 1.1.1.1 --type DNSKEY
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

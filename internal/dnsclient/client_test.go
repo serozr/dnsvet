@@ -415,3 +415,20 @@ func TestQueryRejectsTruncatedTCPFallbackResponse(t *testing.T) {
 		t.Fatalf("Query() error = %v, want truncated TCP fallback error", err)
 	}
 }
+
+func TestNormalizeDNSNamePreservesRootZone(t *testing.T) {
+	got, err := normalizeDNSName(".")
+	if err != nil || got != "." {
+		t.Fatalf("normalizeDNSName(.) = %q, %v; want ., nil", got, err)
+	}
+}
+
+func TestNormalizeDNSNameUsesIDNALookupMapping(t *testing.T) {
+	got, err := normalizeDNSName("MÜLLER.de")
+	if err != nil {
+		t.Fatalf("normalizeDNSName(MÜLLER.de) error = %v", err)
+	}
+	if got != "xn--mller-kva.de" {
+		t.Fatalf("normalizeDNSName(MÜLLER.de) = %q, want xn--mller-kva.de", got)
+	}
+}

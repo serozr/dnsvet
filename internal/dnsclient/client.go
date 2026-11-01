@@ -151,6 +151,9 @@ func validateDNSName(name string) error {
 // normalizeDNSName converts internationalized labels to their ASCII-compatible
 // encoding while preserving ASCII service labels such as _sip and _tcp.
 func normalizeDNSName(name string) (string, error) {
+	if name == "." {
+		return ".", nil
+	}
 	if name == "" {
 		return "", fmt.Errorf("invalid DNS name %q", name)
 	}
@@ -185,8 +188,7 @@ func normalizeDNSName(name string) (string, error) {
 					return "", fmt.Errorf("invalid internationalized DNS label %q: symbol characters are not permitted", label)
 				}
 			}
-			registrationProfile := idna.New(idna.ValidateForRegistration())
-			encoded, err := registrationProfile.ToASCII(label)
+			encoded, err := idna.Lookup.ToASCII(label)
 			if err != nil {
 				return "", fmt.Errorf("invalid internationalized DNS label %q: %w", label, err)
 			}
