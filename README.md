@@ -46,7 +46,7 @@ go run ./cmd/dnsvet query example.com --server 1.1.1.1 --type A
 # Machine-readable JSON output
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --json
 
-# Request DNSSEC records (does not perform local validation)
+# Request DNSSEC records (JSON reports local_validation: not_performed)
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --dnssec --json
 
 # Query the root DNSKEY RRset

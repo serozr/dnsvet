@@ -212,6 +212,9 @@ func TestRunQueryDNSSECJSONMetadata(t *testing.T) {
 	if !output.DNSSECRequested || !output.Authenticated {
 		t.Fatalf("missing DNSSEC metadata: %+v", output)
 	}
+	if output.LocalValidation != "not_performed" {
+		t.Fatalf("local validation status = %q, want not_performed", output.LocalValidation)
+	}
 }
 
 func TestRunQueryJSONOutput(t *testing.T) {

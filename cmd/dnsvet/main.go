@@ -101,6 +101,7 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		output := queryJSONOutput{
 			DNSSECRequested: options.dnssec,
 			Authenticated:   response.AuthenticatedData,
+			LocalValidation: localValidationStatus(options.dnssec),
 			Resolver:        resolver,
 			Question:        dns.Fqdn(options.domain),
 			Type:            dns.TypeToString[options.qtype],
@@ -159,6 +160,14 @@ type queryJSONOutput struct {
 	Answers         []string `json:"answers"`
 	DNSSECRequested bool     `json:"dnssec_requested"`
 	Authenticated   bool     `json:"authenticated_data"`
+	LocalValidation string   `json:"local_validation,omitempty"`
+}
+
+func localValidationStatus(requested bool) string {
+	if !requested {
+		return ""
+	}
+	return "not_performed"
 }
 
 func formatAnswer(record dns.RR) string {
