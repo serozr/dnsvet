@@ -58,3 +58,9 @@ Each phase must have deterministic unit tests using locally generated keys and s
 - DNSSEC logic can be tested independently of UDP/TCP transport and CLI presentation.
 - The implementation is more work than trusting the resolver AD bit, but its results are materially more defensible.
 - Full DNSSEC support is not complete until chain construction and authenticated denial proofs are implemented and tested.
+
+## Implementation status
+
+As of v0.1.5, the repository contains tested primitives for RRset grouping, DNSKEY-to-DS matching, RRset signature verification, pinned trust-anchor DNSKEY-set validation, and parent-authenticated DS delegation validation.
+
+These primitives do not yet constitute a complete DNSSEC validator. Recursive chain construction, child DNSKEY RRset validation as a connected workflow, authenticated NSEC/NSEC3 denial proofs, and CLI validation output remain outstanding.
