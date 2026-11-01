@@ -182,3 +182,33 @@ func TestValidateDelegationDSIgnoresNonProtocolThreeKeys(t *testing.T) {
 		t.Fatalf("matched keys = %d, want only valid protocol-3 child key", len(matched))
 	}
 }
+
+func TestValidateDelegationDSPrefersSHA256OverSHA1(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	parentKey, parentSigner := makeSigningKey(t, "test.")
+	childKey, _ := makeSigningKey(t, "example.test.")
+	sha1DS := childKey.ToDS(dns.SHA1)
+	otherChildKey, _ := makeSigningKey(t, "example.test.")
+	sha256DS := otherChildKey.ToDS(dns.SHA256)
+	dsSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS, Records: []dns.RR{sha1DS, sha256DS}}
+	dsSignature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+	_, err := ValidateDelegationDS("test.", dsSet, []*dns.RRSIG{dsSignature}, []*dns.DNSKEY{parentKey}, []*dns.DNSKEY{childKey}, at)
+	if !errors.Is(err, ErrNoDelegationKey) {
+		t.Fatalf("error = %v, want SHA-1 fallback ignored when SHA-256 is present", err)
+	}
+}
+
+func TestValidateDelegationDSAcceptsSHA1WhenSHA256IsAbsent(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	parentKey, parentSigner := makeSigningKey(t, "test.")
+	childKey, _ := makeSigningKey(t, "example.test.")
+	dsSet := RRset{Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS, Records: []dns.RR{childKey.ToDS(dns.SHA1)}}
+	dsSignature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+	matched, err := ValidateDelegationDS("test.", dsSet, []*dns.RRSIG{dsSignature}, []*dns.DNSKEY{parentKey}, []*dns.DNSKEY{childKey}, at)
+	if err != nil {
+		t.Fatalf("ValidateDelegationDS() error = %v", err)
+	}
+	if len(matched) != 1 || !sameDNSKEY(matched[0], childKey) {
+		t.Fatalf("matched keys = %d, want SHA-1 legacy match", len(matched))
+	}
+}

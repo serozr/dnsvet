@@ -63,4 +63,6 @@ Each phase must have deterministic unit tests using locally generated keys and s
 
 As of v0.1.5, the repository contains tested primitives for RRset grouping, DNSKEY-to-DS matching, RRset signature verification, pinned trust-anchor DNSKEY-set validation, and parent-authenticated DS delegation validation.
 
+DS matching follows RFC 4509 section 3: when an authenticated DS RRset contains SHA-256 DS records, SHA-1 DS records are ignored for key matching. SHA-1 remains supported when no SHA-256 DS record is present. The complete signed DS RRset is verified before this preference is applied. This is the RFC's SHOULD-level preference, not a blanket rejection of SHA-1-only delegations.
+
 These primitives do not yet constitute a complete DNSSEC validator. Recursive chain construction, child DNSKEY RRset validation as a connected workflow, authenticated NSEC/NSEC3 denial proofs, and CLI validation output remain outstanding.

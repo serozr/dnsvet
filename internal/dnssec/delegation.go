@@ -76,11 +76,26 @@ func ValidateDelegationDS(
 		return nil, fmt.Errorf("parent DS RRset signature verification failed: %w", err)
 	}
 
+	// RFC 4509 section 3 recommends ignoring SHA-1 DS records when
+	// the authenticated DS RRset also contains SHA-256 DS records.
+	// Verify the complete RRset above, then apply this preference only
+	// to the DS-to-DNSKEY matching stage.
+	hasSHA256 := false
+	for _, record := range dsRRset.Records {
+		if record.(*dns.DS).DigestType == dns.SHA256 {
+			hasSHA256 = true
+			break
+		}
+	}
+
 	matched := make([]*dns.DNSKEY, 0)
 	unsupportedDigests := 0
 	supportedDigests := 0
 	for _, record := range dsRRset.Records {
 		ds := record.(*dns.DS)
+		if hasSHA256 && ds.DigestType == dns.SHA1 {
+			continue
+		}
 		for _, key := range childKeys {
 			if key == nil || key.Protocol != 3 {
 				continue
