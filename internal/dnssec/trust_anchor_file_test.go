@@ -72,3 +72,21 @@ func TestLoadTrustAnchorRejectsTooManyKeys(t *testing.T) {
 		t.Fatal("LoadTrustAnchor() error = nil, want key count limit error")
 	}
 }
+
+func TestLoadTrustAnchorRejectsDNSKEYWithoutZoneFlag(t *testing.T) {
+	input := ". 3600 IN DNSKEY 1 3 8 AwEAAcExampleKeyMaterial==\n"
+	if _, err := LoadTrustAnchor(strings.NewReader(input)); err == nil {
+		t.Fatal("LoadTrustAnchor() error = nil, want DNSKEY Zone-flag rejection")
+	}
+}
+
+func TestLoadTrustAnchorAcceptsMultilineMasterFileRecord(t *testing.T) {
+	input := "; comment before the record\n\n. 3600 IN DNSKEY (\n  257 3 8 AwEAAcExampleKeyMaterial==\n) ; trailing comment\n"
+	anchor, err := LoadTrustAnchor(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("LoadTrustAnchor() error = %v", err)
+	}
+	if anchor.Zone != "." || len(anchor.DNSKEYs) != 1 {
+		t.Fatalf("unexpected trust anchor: zone=%q keys=%d", anchor.Zone, len(anchor.DNSKEYs))
+	}
+}

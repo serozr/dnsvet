@@ -156,6 +156,12 @@ func validateResponseQuestion(response *dns.Msg, expected dns.Question) error {
 	return nil
 }
 
+// NormalizeDNSName validates a DNS name and converts internationalized labels
+// to their ASCII-compatible encoding. The trailing root dot is preserved.
+func NormalizeDNSName(name string) (string, error) {
+	return normalizeDNSName(name)
+}
+
 func validateDNSName(name string) error {
 	_, err := normalizeDNSName(name)
 	return err

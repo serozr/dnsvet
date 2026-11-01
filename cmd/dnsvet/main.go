@@ -69,8 +69,13 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	jsonRequested := jsonRequestedInArgs(args)
 	options, err := parseQueryOptions(args)
 	if err != nil {
+		if jsonRequested {
+			writeJSONError(stdout, "invalid_arguments", err.Error())
+			return 2
+		}
 		fmt.Fprintf(stderr, "query: %v\n", err)
 		printQueryUsage(stderr)
 		return 2
@@ -81,9 +86,23 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 
 	resolver, err := dnsclient.NormalizeServer(options.server)
 	if err != nil {
+		if options.json {
+			writeJSONError(stdout, "invalid_resolver", err.Error())
+			return 1
+		}
 		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1
 	}
+	questionName, err := dnsclient.NormalizeDNSName(options.domain)
+	if err != nil {
+		if options.json {
+			writeJSONError(stdout, "invalid_domain", err.Error())
+			return 1
+		}
+		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
+		return 1
+	}
+	questionName = dns.Fqdn(questionName)
 	client := dnsclient.New(options.timeout)
 	var response *dns.Msg
 	var elapsed time.Duration
@@ -93,21 +112,27 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 		response, elapsed, err = client.Query(ctx, resolver, options.domain, options.qtype)
 	}
 	if err != nil {
+		if options.json {
+			writeJSONError(stdout, "query_failed", err.Error())
+			return 1
+		}
 		fmt.Fprintf(stderr, "DNS query failed: %v\n", err)
 		return 1
 	}
 
 	if options.json {
 		output := queryJSONOutput{
+			SchemaVersion:   "1",
 			DNSSECRequested: options.dnssec,
 			Authenticated:   response.AuthenticatedData,
 			LocalValidation: localValidationStatus(options.dnssec),
 			Resolver:        resolver,
-			Question:        dns.Fqdn(options.domain),
+			Question:        questionName,
 			Type:            dns.TypeToString[options.qtype],
 			Response:        dns.RcodeToString[response.Rcode],
 			RCode:           response.Rcode,
 			Elapsed:         elapsed.String(),
+			ElapsedMS:       float64(elapsed) / float64(time.Millisecond),
 			Answers:         make([]string, 0, len(response.Answer)),
 		}
 		if output.Response == "" {
@@ -126,7 +151,7 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "Resolver: %s\n", resolver)
-	fmt.Fprintf(stdout, "Question: %s %s\n", dns.Fqdn(options.domain), dns.TypeToString[options.qtype])
+	fmt.Fprintf(stdout, "Question: %s %s\n", questionName, dns.TypeToString[options.qtype])
 	rcode := dns.RcodeToString[response.Rcode]
 	if rcode == "" {
 		rcode = strconv.Itoa(response.Rcode)
@@ -151,16 +176,47 @@ func runQuery(args []string, stdout, stderr io.Writer) int {
 }
 
 type queryJSONOutput struct {
+	SchemaVersion   string   `json:"schema_version"`
 	Resolver        string   `json:"resolver"`
 	Question        string   `json:"question"`
 	Type            string   `json:"type"`
 	Response        string   `json:"response"`
 	RCode           int      `json:"rcode"`
 	Elapsed         string   `json:"elapsed"`
+	ElapsedMS       float64  `json:"elapsed_ms"`
 	Answers         []string `json:"answers"`
 	DNSSECRequested bool     `json:"dnssec_requested"`
 	Authenticated   bool     `json:"authenticated_data"`
 	LocalValidation string   `json:"local_validation,omitempty"`
+}
+
+type queryJSONError struct {
+	SchemaVersion string          `json:"schema_version"`
+	Error         queryJSONDetail `json:"error"`
+}
+
+type queryJSONDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func writeJSONError(w io.Writer, code, message string) {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	_ = encoder.Encode(queryJSONError{
+		SchemaVersion: "1",
+		Error:         queryJSONDetail{Code: code, Message: message},
+	})
+}
+
+func jsonRequestedInArgs(args []string) bool {
+	for _, arg := range args {
+		name, _, _ := strings.Cut(arg, "=")
+		if name == "--json" {
+			return true
+		}
+	}
+	return false
 }
 
 func localValidationStatus(requested bool) string {

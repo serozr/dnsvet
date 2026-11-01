@@ -9,6 +9,10 @@ import (
 )
 
 func signedNSECIntervalFixture(t *testing.T, owner, next, zone string) (RRset, *dns.RRSIG, *dns.DNSKEY, time.Time) {
+	return signedNSECIntervalFixtureWithBitmap(t, owner, next, zone, []uint16{dns.TypeA})
+}
+
+func signedNSECIntervalFixtureWithBitmap(t *testing.T, owner, next, zone string, bitmap []uint16) (RRset, *dns.RRSIG, *dns.DNSKEY, time.Time) {
 	t.Helper()
 	at := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
 	key := &dns.DNSKEY{
@@ -28,7 +32,7 @@ func signedNSECIntervalFixture(t *testing.T, owner, next, zone string) (RRset, *
 	record := &dns.NSEC{
 		Hdr:        dns.RR_Header{Name: owner, Rrtype: dns.TypeNSEC, Class: dns.ClassINET, Ttl: 300},
 		NextDomain: next,
-		TypeBitMap: []uint16{dns.TypeA},
+		TypeBitMap: bitmap,
 	}
 	rrset := RRset{
 		Name:    owner,
@@ -121,6 +125,27 @@ func TestValidateNSECIntervalProofRejectsInvalidMaterial(t *testing.T) {
 		got := ValidateNSECIntervalProof("example.", "m.example.", rrset, []*dns.RRSIG{sig}, nil, at)
 		if got.Status != NSECProofNotProven {
 			t.Fatalf("status = %q, want not_proven", got.Status)
+		}
+	})
+}
+
+func TestValidateNSECIntervalProofDelegationPointSafety(t *testing.T) {
+	t.Run("does not prove below delegation point", func(t *testing.T) {
+		rrset, sig, key, at := signedNSECIntervalFixtureWithBitmap(
+			t, "child.example.", "z.example.", "example.", []uint16{dns.TypeNS},
+		)
+		got := ValidateNSECIntervalProof("example.", "host.child.example.", rrset, []*dns.RRSIG{sig}, []*dns.DNSKEY{key}, at)
+		if got.Status != NSECProofNotProven {
+			t.Fatalf("status = %q, want not_proven (reason: %s)", got.Status, got.Reason)
+		}
+	})
+	t.Run("zone apex NS and SOA is not a delegation point", func(t *testing.T) {
+		rrset, sig, key, at := signedNSECIntervalFixtureWithBitmap(
+			t, "example.", "z.example.", "example.", []uint16{dns.TypeNS, dns.TypeSOA},
+		)
+		got := ValidateNSECIntervalProof("example.", "www.example.", rrset, []*dns.RRSIG{sig}, []*dns.DNSKEY{key}, at)
+		if got.Status != NSECProofProven {
+			t.Fatalf("status = %q, want proven (reason: %s)", got.Status, got.Reason)
 		}
 	})
 }

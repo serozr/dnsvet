@@ -126,3 +126,25 @@ func TestNSECIntervalCovers(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalNameOrderUsesWireOctets(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b string
+		want int
+	}{
+		{name: "ASCII case folding", a: "A.Example.", b: "a.example.", want: 0},
+		{name: "label prefix sorts shorter first", a: "a.example.", b: "aa.example.", want: -1},
+		{name: "fewer labels sorts first", a: "example.", b: "a.example.", want: -1},
+		{name: "escaped wire octet sorts after UTF-8 octet", a: `\200.example.`, b: "é.example.", want: 1},
+		{name: "escaped ASCII equals literal ASCII after folding", a: `\065.example.`, b: "a.example.", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := canonicalNameOrder(tt.a, tt.b)
+			if got != tt.want {
+				t.Fatalf("canonicalNameOrder(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}

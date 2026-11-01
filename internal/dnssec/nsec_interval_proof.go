@@ -84,6 +84,21 @@ func ValidateNSECIntervalProof(
 	if err := VerifyRRset(rrset, signatures, zoneKeys, at); err != nil {
 		return invalid(fmt.Sprintf("NSEC RRset signature validation failed: %v", err))
 	}
+	// An NSEC at a delegation point cannot, by itself, prove non-existence
+	// below that cut. The child zone may contain names absent from the
+	// parent's authoritative view.
+	hasNS, hasSOA := false, false
+	for _, typ := range nsec.TypeBitMap {
+		if typ == dns.TypeNS {
+			hasNS = true
+		}
+		if typ == dns.TypeSOA {
+			hasSOA = true
+		}
+	}
+	if !strings.EqualFold(owner, zone) && hasNS && !hasSOA && isChildZone(owner, query) {
+		return notProven("query is below an NSEC delegation point; parent-zone interval is insufficient")
+	}
 	if !NSECIntervalCovers(owner, next, query) {
 		return notProven("authenticated NSEC interval does not cover the query name")
 	}

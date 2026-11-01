@@ -261,3 +261,58 @@ func TestRunQueryJSONOutput(t *testing.T) {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
 	}
 }
+
+func TestRunQueryJSONErrorsAreStructured(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"query", "example.test", "--json", "--timeout", "0s"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("run() exit code = %d, want 2", code)
+	}
+	var output queryJSONError
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON error response: %v; output=%q", err, stdout.String())
+	}
+	if output.SchemaVersion != "1" || output.Error.Code != "invalid_arguments" || output.Error.Message == "" {
+		t.Fatalf("unexpected JSON error: %+v", output)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunQueryJSONNormalizesIDNAQuestionAndReportsElapsedMS(t *testing.T) {
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for DNS test server: %v", err)
+	}
+	defer packetConn.Close()
+	server := &dns.Server{
+		PacketConn: packetConn,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, request *dns.Msg) {
+			response := new(dns.Msg)
+			response.SetReply(request)
+			_ = w.WriteMsg(response)
+		}),
+	}
+	go func() { _ = server.ActivateAndServe() }()
+	defer server.Shutdown()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"query", "bücher.example", "--server", packetConn.LocalAddr().String(), "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() exit code = %d; stderr=%q", code, stderr.String())
+	}
+	var output queryJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if output.SchemaVersion != "1" || output.Question != "xn--bcher-kva.example." {
+		t.Fatalf("unexpected schema/question: %+v", output)
+	}
+	if output.ElapsedMS < 0 {
+		t.Fatalf("elapsed_ms = %v, want non-negative", output.ElapsedMS)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}

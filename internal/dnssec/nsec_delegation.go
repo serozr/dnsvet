@@ -133,28 +133,54 @@ func ValidateInsecureDelegationNSEC(
 	}
 }
 
-// canonicalNameOrder compares DNS names using canonical DNSSEC ordering:
-// labels are compared from the root toward the leaf, case-insensitively.
+// canonicalNameOrder implements RFC 4034 section 6.1 ordering. DNS names
+// are compared from the rightmost label, using unsigned wire octets and
+// ASCII-only case folding. Presentation strings are packed first so escaped
+// octets are compared by their DNS value rather than their textual spelling.
 func canonicalNameOrder(a, b string) int {
-	aLabels := dns.SplitDomainName(strings.ToLower(dns.Fqdn(a)))
-	bLabels := dns.SplitDomainName(strings.ToLower(dns.Fqdn(b)))
-
-	for i, j := len(aLabels)-1, len(bLabels)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
-		if cmp := bytes.Compare([]byte(aLabels[i]), []byte(bLabels[j])); cmp != 0 {
-			if cmp < 0 {
-				return -1
-			}
-			return 1
+	left, leftErr := canonicalLabels(a)
+	right, rightErr := canonicalLabels(b)
+	if leftErr != nil || rightErr != nil {
+		return 0
+	}
+	for i, j := len(left)-1, len(right)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
+		if cmp := bytes.Compare(left[i], right[j]); cmp != 0 {
+			return cmp
 		}
 	}
 	switch {
-	case len(aLabels) < len(bLabels):
+	case len(left) < len(right):
 		return -1
-	case len(aLabels) > len(bLabels):
+	case len(left) > len(right):
 		return 1
 	default:
 		return 0
 	}
+}
+
+func canonicalLabels(name string) ([][]byte, error) {
+	wire := make([]byte, 255)
+	end, err := dns.PackDomainName(dns.Fqdn(name), wire, 0, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	labels := make([][]byte, 0, 8)
+	for pos := 0; pos < end; {
+		length := int(wire[pos])
+		pos++
+		if length == 0 {
+			break
+		}
+		label := append([]byte(nil), wire[pos:pos+length]...)
+		for i, octet := range label {
+			if octet >= 'A' && octet <= 'Z' {
+				label[i] = octet + ('a' - 'A')
+			}
+		}
+		labels = append(labels, label)
+		pos += length
+	}
+	return labels, nil
 }
 
 func isWithinZone(zone, name string) bool {

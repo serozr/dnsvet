@@ -12,7 +12,7 @@ It is being built to inspect DNS resolver configuration, query behavior, availab
 - Local-first operation with no AI dependency.
 - DNS diagnostics based on explicit, testable rules.
 - Safe defaults, bounded timeouts, and controlled query rates.
-- Readable terminal output and machine-readable JSON.
+- Readable terminal output and versioned machine-readable JSON (schema version 1).
 - Unit and local integration tests that do not depend on public DNS services.
 
 ## Planned capabilities
@@ -25,13 +25,13 @@ It is being built to inspect DNS resolver configuration, query behavior, availab
 - DNS trace, propagation, and infrastructure diagnostics.
 - Terminal, JSON, and eventually HTML reports.
 
-Features will be documented as implemented only after they have working tests.
+Features will be documented as implemented only after they have working tests. The JSON elapsed value measures total client query time, including a TCP retry when a UDP response is truncated.
 
-The current DNSSEC package contains validation primitives for RRsets, DS/DNSKEY matching, trust anchors, supplied delegation chains, and a bounded parser for locally provisioned DNSKEY trust-anchor files. It is not yet a complete network-recursive DNSSEC validator; authenticated negative-proof validation and CLI integration remain in development.
+The current DNSSEC package contains validation primitives for RRsets, DS/DNSKEY matching, trust anchors, supplied delegation chains, authenticated NSEC interval checks, and a narrow exact-owner NODATA proof. The trust-anchor parser accepts bounded multiline DNSKEY master-file records. These are validation primitives, not a complete network-recursive DNSSEC validator; NSEC3 and full recursive proof construction are not implemented.
 
 ## Getting started
 
-Requires Go 1.23 or later.
+Requires Go 1.27.3 or later.
 
 ```bash
 git clone https://github.com/serozr/dnsvet.git
@@ -43,7 +43,7 @@ go run ./cmd/dnsvet help
 # Query an A record
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --type A
 
-# Machine-readable JSON output
+# Machine-readable JSON output (includes elapsed_ms and schema_version)
 go run ./cmd/dnsvet query example.com --server 1.1.1.1 --json
 
 # Request DNSSEC records (JSON reports local_validation: not_performed)
