@@ -419,7 +419,7 @@ func TestQueryRejectsTruncatedTCPFallbackResponse(t *testing.T) {
 		response.Truncated = true
 		return response
 	})
-	_, _, err = New(time.Second).Query(context.Background(), udpAddress, "still-truncated.test", dns.TypeA)
+	_, _, err := New(time.Second).Query(context.Background(), udpAddress, "still-truncated.test", dns.TypeA)
 	if err == nil || !strings.Contains(err.Error(), "still truncated after TCP fallback") {
 		t.Fatalf("Query() error = %v, want truncated TCP fallback error", err)
 	}
