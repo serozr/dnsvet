@@ -155,3 +155,30 @@ func TestValidateDelegationDSRejectsUnsupportedDigest(t *testing.T) {
 		t.Fatalf("error = %v, want ErrUnsupportedDigest", err)
 	}
 }
+
+func TestValidateDelegationDSIgnoresNonProtocolThreeKeys(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	parentKey, parentSigner := makeSigningKey(t, "test.")
+	invalidParent := *parentKey
+	invalidParent.Protocol = 2
+	childKey, _ := makeSigningKey(t, "example.test.")
+	invalidChild := *childKey
+	invalidChild.Protocol = 2
+	dsSet := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
+	dsSignature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+
+	matched, err := ValidateDelegationDS(
+		"test.", dsSet, []*dns.RRSIG{dsSignature},
+		[]*dns.DNSKEY{&invalidParent, parentKey},
+		[]*dns.DNSKEY{&invalidChild, childKey}, at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateDelegationDS() error = %v", err)
+	}
+	if len(matched) != 1 || !sameDNSKEY(matched[0], childKey) {
+		t.Fatalf("matched keys = %d, want only valid protocol-3 child key", len(matched))
+	}
+}

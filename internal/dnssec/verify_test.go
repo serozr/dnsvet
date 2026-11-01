@@ -110,3 +110,13 @@ func TestVerifyRRsetRequiresExplicitTime(t *testing.T) {
 		t.Fatal("VerifyRRset() error = nil, want explicit-time error")
 	}
 }
+
+func TestVerifyRRsetIgnoresNonProtocolThreeSigningKey(t *testing.T) {
+	rrset, signature, key := signedTestRRset(t, time.Now().UTC())
+	invalidKey := *key
+	invalidKey.Protocol = 2
+
+	if err := VerifyRRset(rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{&invalidKey}, time.Now().UTC()); !errors.Is(err, ErrNoMatchingKey) {
+		t.Fatalf("VerifyRRset() error = %v, want ErrNoMatchingKey", err)
+	}
+}

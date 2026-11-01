@@ -133,3 +133,26 @@ func TestValidateChildDNSKEYSetRejectsWrongZoneAndType(t *testing.T) {
 		t.Fatal("non-DNSKEY RRset accepted")
 	}
 }
+
+func TestValidateChildDNSKEYSetIgnoresNonProtocolThreeRecords(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	key, signer := makeSigningKey(t, "child.test.")
+	invalidKey := *key
+	invalidKey.Protocol = 2
+	rrset := RRset{
+		Name: "child.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{key, &invalidKey},
+	}
+	signature := signTestRRset(t, rrset, key, signer, at)
+
+	keys, err := ValidateChildDNSKEYSet(
+		"child.test.", rrset, []*dns.RRSIG{signature},
+		[]*dns.DNSKEY{key}, at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateChildDNSKEYSet() error = %v", err)
+	}
+	if len(keys) != 1 || !sameDNSKEY(keys[0], key) {
+		t.Fatalf("usable keys = %d, want only valid protocol-3 key", len(keys))
+	}
+}

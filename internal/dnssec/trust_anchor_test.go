@@ -129,3 +129,26 @@ func TestValidateTrustAnchorDNSKEYSetRejectsMissingAnchor(t *testing.T) {
 		t.Fatal("ValidateTrustAnchorDNSKEYSet() error = nil, want empty RRset error")
 	}
 }
+
+func TestValidateTrustAnchorDNSKEYSetIgnoresNonProtocolThreeRecords(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	key, signer := makeSigningKey(t, "example.test.")
+	invalidKey := *key
+	invalidKey.Protocol = 2
+	rrset := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{key, &invalidKey},
+	}
+	signature := signTestRRset(t, rrset, key, signer, at)
+
+	keys, err := ValidateTrustAnchorDNSKEYSet(
+		rrset, []*dns.RRSIG{signature},
+		TrustAnchor{Zone: "example.test.", DNSKEY: key}, at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateTrustAnchorDNSKEYSet() error = %v", err)
+	}
+	if len(keys) != 1 || !sameDNSKEY(keys[0], key) {
+		t.Fatalf("usable keys = %d, want only the valid protocol-3 key", len(keys))
+	}
+}
