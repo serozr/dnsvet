@@ -284,3 +284,43 @@ func TestNormalizeServerAddsStandardPortWhenOmitted(t *testing.T) {
 		t.Fatalf("NormalizeServer() = %q, want %q", got, "192.0.2.53:53")
 	}
 }
+
+func TestValidateResponseQuestionRequiresResponseBit(t *testing.T) {
+	response := new(dns.Msg)
+	response.Question = []dns.Question{{
+		Name: "example.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET,
+	}}
+	if err := validateResponseQuestion(response, response.Question[0]); err == nil ||
+		!strings.Contains(err.Error(), "not marked as a response") {
+		t.Fatalf("validateResponseQuestion() error = %v, want QR-bit error", err)
+	}
+}
+
+func TestValidateResponseQuestionPreservesErrorWithoutQuestion(t *testing.T) {
+	for _, rcode := range []int{dns.RcodeFormatError, dns.RcodeServerFailure, dns.RcodeRefused} {
+		t.Run(dns.RcodeToString[rcode], func(t *testing.T) {
+			response := new(dns.Msg)
+			response.Response = true
+			response.Rcode = rcode
+			expected := dns.Question{
+				Name: "example.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET,
+			}
+			if err := validateResponseQuestion(response, expected); err != nil {
+				t.Fatalf("validateResponseQuestion() error = %v, want error response preserved", err)
+			}
+		})
+	}
+}
+
+func TestValidateResponseQuestionRejectsSuccessfulResponseWithoutQuestion(t *testing.T) {
+	response := new(dns.Msg)
+	response.Response = true
+	response.Rcode = dns.RcodeSuccess
+	expected := dns.Question{
+		Name: "example.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET,
+	}
+	if err := validateResponseQuestion(response, expected); err == nil ||
+		!strings.Contains(err.Error(), "contains no question") {
+		t.Fatalf("validateResponseQuestion() error = %v, want missing-question error", err)
+	}
+}
