@@ -145,3 +145,13 @@ func TestVerifyRRsetRejectsExcessiveValidationInput(t *testing.T) {
 		}
 	})
 }
+
+func TestVerifyRRsetRejectsDuplicateRecords(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	rrset, signature, key := signedTestRRset(t, at)
+	rrset.Records = append(rrset.Records, dns.Copy(rrset.Records[0]))
+
+	if err := VerifyRRset(rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{key}, at); err == nil {
+		t.Fatal("VerifyRRset() error = nil, want duplicate-record error")
+	}
+}

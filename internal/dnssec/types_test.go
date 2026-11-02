@@ -103,3 +103,12 @@ func TestGroupRRsetsRejectsExcessiveInput(t *testing.T) {
 		t.Fatal("GroupRRsets() error = nil, want record limit error")
 	}
 }
+
+func TestGroupRRsetsRejectsDuplicateRecordsIgnoringOwnerCase(t *testing.T) {
+	record := mustRR(t, "example.test. 60 IN A 192.0.2.1")
+	duplicate := mustRR(t, "EXAMPLE.TEST. 60 IN A 192.0.2.1")
+
+	if _, err := GroupRRsets([]dns.RR{record, duplicate}); err == nil {
+		t.Fatal("GroupRRsets() error = nil, want duplicate-record error")
+	}
+}

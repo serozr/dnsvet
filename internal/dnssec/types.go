@@ -68,6 +68,9 @@ func GroupRRsets(records []dns.RR) ([]RRset, error) {
 		name := strings.ToLower(dns.Fqdn(header.Name))
 		key := rrsetKey{name: name, class: header.Class, typ: header.Rrtype}
 		if index, ok := indices[key]; ok {
+			if duplicateRR(groups[index].Records, record) {
+				return nil, fmt.Errorf("duplicate RRset record at index %d", i)
+			}
 			groups[index].Records = append(groups[index].Records, record)
 			continue
 		}
@@ -82,6 +85,22 @@ func GroupRRsets(records []dns.RR) ([]RRset, error) {
 	}
 
 	return groups, nil
+}
+
+func duplicateRR(records []dns.RR, candidate dns.RR) bool {
+	candidateKey := canonicalRRKey(candidate)
+	for _, record := range records {
+		if canonicalRRKey(record) == candidateKey {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalRRKey(record dns.RR) string {
+	copy := dns.Copy(record)
+	copy.Header().Name = strings.ToLower(dns.Fqdn(copy.Header().Name))
+	return copy.String()
 }
 
 func SignaturesForRRset(rrset RRset, records []dns.RR) ([]*dns.RRSIG, error) {

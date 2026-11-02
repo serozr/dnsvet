@@ -39,6 +39,7 @@ func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at ti
 	}
 
 	owner := dns.Fqdn(rrset.Name)
+	seen := make(map[string]struct{}, len(rrset.Records))
 	for i, record := range rrset.Records {
 		if record == nil {
 			return fmt.Errorf("RRset record at index %d is nil", i)
@@ -51,6 +52,11 @@ func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at ti
 			header.Class != rrset.Class || header.Rrtype != rrset.Type {
 			return fmt.Errorf("RRset record at index %d does not match RRset owner, class, and type", i)
 		}
+		key := canonicalRRKey(record)
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("RRset contains duplicate record at index %d", i)
+		}
+		seen[key] = struct{}{}
 	}
 
 	if len(signatures) == 0 {
