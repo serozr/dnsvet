@@ -53,7 +53,7 @@ func ValidateDelegationDS(
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), parent) {
 			return nil, fmt.Errorf("parent DNSKEY at index %d does not belong to parent zone %q", i, parent)
 		}
-		if key.Protocol == 3 {
+		if key.Protocol == 3 && key.Flags&0x0100 != 0 {
 			usableParentKeys = append(usableParentKeys, key)
 		}
 	}
@@ -100,6 +100,9 @@ func ValidateDelegationDS(
 		}
 		for _, key := range childKeys {
 			if key == nil || key.Protocol != 3 {
+				continue
+			}
+			if key.Flags&0x0100 == 0 {
 				continue
 			}
 			if key.Hdr.Class != dsRRset.Class ||

@@ -52,7 +52,9 @@ func ValidateChildDNSKEYSet(
 			return nil, fmt.Errorf("child DNSKEY at index %d does not belong to zone %q", i, zone)
 		}
 		if key.Protocol == 3 {
-			keys = append(keys, key)
+			if key.Flags&0x0100 != 0 {
+				keys = append(keys, key)
+			}
 		}
 	}
 
@@ -65,7 +67,7 @@ func ValidateChildDNSKEYSet(
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
 			return nil, fmt.Errorf("DS-matched DNSKEY at index %d does not belong to child zone %q", i, zone)
 		}
-		if key.Protocol != 3 {
+		if key.Protocol != 3 || key.Flags&0x0100 == 0 {
 			continue
 		}
 		for _, rrsetKey := range keys {

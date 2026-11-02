@@ -61,6 +61,9 @@ func ValidateTrustAnchorDNSKEYSet(
 		if key.Protocol != 3 {
 			return nil, fmt.Errorf("invalid trust anchor DNSKEY protocol %d at index %d: want 3", key.Protocol, i)
 		}
+		if key.Flags&0x0100 == 0 {
+			return nil, fmt.Errorf("trust anchor DNSKEY at index %d is not marked as a zone key", i)
+		}
 		if key.Hdr.Rrtype != dns.TypeDNSKEY ||
 			key.Hdr.Class != rrset.Class ||
 			!strings.EqualFold(dns.Fqdn(key.Hdr.Name), zone) {
@@ -80,6 +83,9 @@ func ValidateTrustAnchorDNSKEYSet(
 			return nil, fmt.Errorf("DNSKEY at index %d does not belong to the anchored zone", i)
 		}
 		if key.Protocol != 3 {
+			continue
+		}
+		if key.Flags&0x0100 == 0 {
 			continue
 		}
 		authenticatedKeys = append(authenticatedKeys, key)

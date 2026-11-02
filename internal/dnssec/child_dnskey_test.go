@@ -38,6 +38,28 @@ func signedChildDNSKEYSet(t *testing.T, at time.Time) (RRset, *dns.RRSIG, *dns.D
 	return rrset, signature, ksk, zsk
 }
 
+func TestValidateChildDNSKEYSetRejectsNonZoneSigner(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	ksk, kskSigner := makeSigningKey(t, "child.test.")
+	nonZoneKey, _ := makeSigningKeyWithFlags(t, "child.test.", 1)
+	rrset := RRset{
+		Name: "child.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{ksk, nonZoneKey},
+	}
+	signature := signTestRRset(t, rrset, ksk, kskSigner, at)
+
+	keys, err := ValidateChildDNSKEYSet(
+		"child.test.", rrset, []*dns.RRSIG{signature},
+		[]*dns.DNSKEY{ksk}, at,
+	)
+	if err != nil {
+		t.Fatalf("ValidateChildDNSKEYSet() error = %v", err)
+	}
+	if len(keys) != 1 || !sameDNSKEY(keys[0], ksk) {
+		t.Fatalf("usable keys = %d, want only the zone key", len(keys))
+	}
+}
+
 func TestValidateChildDNSKEYSetAcceptsDSAuthenticatedSigner(t *testing.T) {
 	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	rrset, signature, ksk, _ := signedChildDNSKEYSet(t, at)

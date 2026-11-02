@@ -11,10 +11,14 @@ import (
 )
 
 func makeSigningKey(t *testing.T, zone string) (*dns.DNSKEY, crypto.Signer) {
+	return makeSigningKeyWithFlags(t, zone, 257)
+}
+
+func makeSigningKeyWithFlags(t *testing.T, zone string, flags uint16) (*dns.DNSKEY, crypto.Signer) {
 	t.Helper()
 	key := &dns.DNSKEY{
 		Hdr:       dns.RR_Header{Name: dns.Fqdn(zone), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600},
-		Flags:     257,
+		Flags:     flags,
 		Protocol:  3,
 		Algorithm: dns.ED25519,
 	}
@@ -27,6 +31,25 @@ func makeSigningKey(t *testing.T, zone string) (*dns.DNSKEY, crypto.Signer) {
 		t.Fatal("generated private key does not implement crypto.Signer")
 	}
 	return key, signer
+}
+
+func TestValidateDelegationDSRejectsNonZoneChildKey(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	parentKey, parentSigner := makeSigningKey(t, "test.")
+	childKey, _ := makeSigningKeyWithFlags(t, "example.test.", 1)
+	dsSet := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
+	signature := signTestRRset(t, dsSet, parentKey, parentSigner, at)
+
+	_, err := ValidateDelegationDS(
+		"test.", dsSet, []*dns.RRSIG{signature},
+		[]*dns.DNSKEY{parentKey}, []*dns.DNSKEY{childKey}, at,
+	)
+	if !errors.Is(err, ErrNoDelegationKey) {
+		t.Fatalf("error = %v, want ErrNoDelegationKey", err)
+	}
 }
 
 func signedDelegationDS(t *testing.T, at time.Time) (RRset, *dns.RRSIG, *dns.DNSKEY, *dns.DNSKEY, crypto.Signer) {

@@ -10,11 +10,15 @@ import (
 )
 
 func signedDNSKEYSet(t *testing.T, at time.Time) (RRset, *dns.RRSIG, *dns.DNSKEY) {
+	return signedDNSKEYSetWithFlags(t, at, 257)
+}
+
+func signedDNSKEYSetWithFlags(t *testing.T, at time.Time, flags uint16) (RRset, *dns.RRSIG, *dns.DNSKEY) {
 	t.Helper()
 
 	key := &dns.DNSKEY{
 		Hdr:       dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600},
-		Flags:     257,
+		Flags:     flags,
 		Protocol:  3,
 		Algorithm: dns.ED25519,
 	}
@@ -47,6 +51,21 @@ func signedDNSKEYSet(t *testing.T, at time.Time) (RRset, *dns.RRSIG, *dns.DNSKEY
 		t.Fatalf("RRSIG.Sign(): %v", err)
 	}
 	return rrset, signature, key
+}
+
+func TestValidateTrustAnchorDNSKEYSetRejectsNonZoneKey(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	rrset, signature, key := signedDNSKEYSetWithFlags(t, at, 1)
+
+	_, err := ValidateTrustAnchorDNSKEYSet(
+		rrset,
+		[]*dns.RRSIG{signature},
+		TrustAnchor{Zone: "example.test.", DNSKEY: key},
+		at,
+	)
+	if err == nil {
+		t.Fatal("ValidateTrustAnchorDNSKEYSet() error = nil, want non-zone key rejection")
+	}
 }
 
 func TestValidateTrustAnchorDNSKEYSetAcceptsPinnedKey(t *testing.T) {
