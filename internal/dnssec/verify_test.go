@@ -120,3 +120,28 @@ func TestVerifyRRsetIgnoresNonProtocolThreeSigningKey(t *testing.T) {
 		t.Fatalf("VerifyRRset() error = %v, want ErrNoMatchingKey", err)
 	}
 }
+
+func TestVerifyRRsetRejectsExcessiveValidationInput(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	rrset, signature, key := signedTestRRset(t, at)
+
+	t.Run("records", func(t *testing.T) {
+		oversized := rrset
+		oversized.Records = make([]dns.RR, MaxRRsetRecords+1)
+		if err := VerifyRRset(oversized, []*dns.RRSIG{signature}, []*dns.DNSKEY{key}, at); err == nil {
+			t.Fatal("VerifyRRset() error = nil, want record limit error")
+		}
+	})
+	t.Run("signatures", func(t *testing.T) {
+		signatures := make([]*dns.RRSIG, MaxRRsetSignatures+1)
+		if err := VerifyRRset(rrset, signatures, []*dns.DNSKEY{key}, at); err == nil {
+			t.Fatal("VerifyRRset() error = nil, want signature limit error")
+		}
+	})
+	t.Run("keys", func(t *testing.T) {
+		keys := make([]*dns.DNSKEY, MaxValidationKeys+1)
+		if err := VerifyRRset(rrset, []*dns.RRSIG{signature}, keys, at); err == nil {
+			t.Fatal("VerifyRRset() error = nil, want key limit error")
+		}
+	})
+}

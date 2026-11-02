@@ -96,3 +96,10 @@ func TestSignaturesForRRsetRejectsEmptyRRset(t *testing.T) {
 		t.Fatal("SignaturesForRRset() error = nil, want error")
 	}
 }
+
+func TestGroupRRsetsRejectsExcessiveInput(t *testing.T) {
+	records := make([]dns.RR, MaxRRsetRecords+1)
+	if _, err := GroupRRsets(records); err == nil {
+		t.Fatal("GroupRRsets() error = nil, want record limit error")
+	}
+}

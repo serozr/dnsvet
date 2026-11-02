@@ -29,6 +29,15 @@ type RRset struct {
 	Records []dns.RR
 }
 
+const (
+	// MaxRRsetRecords bounds records accepted for one RRset or grouped input.
+	MaxRRsetRecords = 4096
+	// MaxRRsetSignatures bounds candidate RRSIG records checked for one RRset.
+	MaxRRsetSignatures = 64
+	// MaxValidationKeys bounds candidate DNSKEYs checked for one RRset.
+	MaxValidationKeys = 256
+)
+
 type rrsetKey struct {
 	name  string
 	class uint16
@@ -36,6 +45,10 @@ type rrsetKey struct {
 }
 
 func GroupRRsets(records []dns.RR) ([]RRset, error) {
+	if len(records) > MaxRRsetRecords {
+		return nil, fmt.Errorf("record count %d exceeds maximum %d", len(records), MaxRRsetRecords)
+	}
+
 	groups := make([]RRset, 0)
 	indices := make(map[rrsetKey]int)
 
@@ -75,6 +88,12 @@ func SignaturesForRRset(rrset RRset, records []dns.RR) ([]*dns.RRSIG, error) {
 	if len(rrset.Records) == 0 {
 		return nil, fmt.Errorf("cannot collect signatures for an empty RRset")
 	}
+	if len(rrset.Records) > MaxRRsetRecords {
+		return nil, fmt.Errorf("RRset record count %d exceeds maximum %d", len(rrset.Records), MaxRRsetRecords)
+	}
+	if len(records) > MaxRRsetRecords {
+		return nil, fmt.Errorf("record count %d exceeds maximum %d", len(records), MaxRRsetRecords)
+	}
 
 	signatures := make([]*dns.RRSIG, 0)
 	for i, record := range records {
@@ -90,6 +109,9 @@ func SignaturesForRRset(rrset RRset, records []dns.RR) ([]*dns.RRSIG, error) {
 			signature.Hdr.Class == rrset.Class &&
 			signature.TypeCovered == rrset.Type {
 			signatures = append(signatures, signature)
+			if len(signatures) > MaxRRsetSignatures {
+				return nil, fmt.Errorf("signature count exceeds maximum %d", MaxRRsetSignatures)
+			}
 		}
 	}
 

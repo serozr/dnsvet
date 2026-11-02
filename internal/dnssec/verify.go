@@ -25,6 +25,15 @@ func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at ti
 	if len(rrset.Records) == 0 {
 		return errors.New("cannot verify an empty RRset")
 	}
+	if len(rrset.Records) > MaxRRsetRecords {
+		return fmt.Errorf("RRset record count %d exceeds maximum %d", len(rrset.Records), MaxRRsetRecords)
+	}
+	if len(signatures) > MaxRRsetSignatures {
+		return fmt.Errorf("signature count %d exceeds maximum %d", len(signatures), MaxRRsetSignatures)
+	}
+	if len(keys) > MaxValidationKeys {
+		return fmt.Errorf("validation key count %d exceeds maximum %d", len(keys), MaxValidationKeys)
+	}
 	if at.IsZero() {
 		return errors.New("verification time must be specified")
 	}
