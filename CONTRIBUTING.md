@@ -10,6 +10,11 @@ Thanks for considering a contribution to dnsvet.
 - Run `go test ./...`.
 - Keep tests deterministic and avoid depending on public DNS services.
 
+Before pushing, run `make check`. On Windows, run
+`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1`.
+The check covers module consistency, formatting, vet, tests, race tests when
+CGO is enabled, and builds.
+
 ## Pull requests
 
 - Explain the problem and the behavior being changed.
