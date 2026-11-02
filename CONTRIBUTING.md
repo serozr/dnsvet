@@ -4,7 +4,7 @@ Thanks for considering a contribution to dnsvet.
 
 ## Development requirements
 
-- Go 1.23 or later.
+- Go 1.27.3 or later.
 - Run `gofmt` on changed Go files.
 - Run `go vet ./...`.
 - Run `go test ./...`.
