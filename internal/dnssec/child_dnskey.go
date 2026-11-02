@@ -26,6 +26,9 @@ func ValidateChildDNSKEYSet(
 	if childZone == "" {
 		return nil, errors.New("child zone is empty")
 	}
+	if err := validateRRsetMetadata(rrset); err != nil {
+		return nil, fmt.Errorf("invalid child DNSKEY RRset metadata: %w", err)
+	}
 	if len(rrset.Records) == 0 {
 		return nil, errors.New("child DNSKEY RRset is empty")
 	}

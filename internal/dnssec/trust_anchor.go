@@ -33,6 +33,9 @@ func ValidateTrustAnchorDNSKEYSet(
 	if anchor.Zone == "" {
 		return nil, errors.New("trust anchor zone is empty")
 	}
+	if err := validateRRsetMetadata(rrset); err != nil {
+		return nil, fmt.Errorf("invalid trust anchor RRset metadata: %w", err)
+	}
 	if len(rrset.Records) == 0 {
 		return nil, errors.New("DNSKEY RRset is empty")
 	}

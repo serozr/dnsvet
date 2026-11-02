@@ -22,6 +22,9 @@ var (
 // This verifies only the supplied key/signature relationship; it does not build
 // or authenticate the DNSSEC chain from a configured trust anchor.
 func VerifyRRset(rrset RRset, signatures []*dns.RRSIG, keys []*dns.DNSKEY, at time.Time) error {
+	if err := validateRRsetMetadata(rrset); err != nil {
+		return err
+	}
 	if len(rrset.Records) == 0 {
 		return errors.New("cannot verify an empty RRset")
 	}

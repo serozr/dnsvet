@@ -104,3 +104,19 @@ func TestMatchDNSKEYToDSRejectsNilInputs(t *testing.T) {
 		t.Fatal("nil DS should return an error")
 	}
 }
+
+func TestMatchDNSKEYToDSRejectsWrongRecordTypes(t *testing.T) {
+	key := mustDNSKEY(t)
+	ds := key.ToDS(dns.SHA256)
+	wrongKey := *key
+	wrongKey.Hdr.Rrtype = dns.TypeA
+	if _, err := MatchDNSKEYToDS(&wrongKey, ds); err == nil {
+		t.Fatal("MatchDNSKEYToDS() error = nil, want DNSKEY type error")
+	}
+
+	wrongDS := *ds
+	wrongDS.Hdr.Rrtype = dns.TypeA
+	if _, err := MatchDNSKEYToDS(key, &wrongDS); err == nil {
+		t.Fatal("MatchDNSKEYToDS() error = nil, want DS type error")
+	}
+}

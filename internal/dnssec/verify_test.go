@@ -104,6 +104,24 @@ func TestVerifyRRsetRejectsMismatchedRRsetRecord(t *testing.T) {
 	}
 }
 
+func TestVerifyRRsetRejectsInvalidMetadata(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	rrset, signature, key := signedTestRRset(t, at)
+	for name, mutate := range map[string]func(*RRset){
+		"empty owner": func(rrset *RRset) { rrset.Name = "" },
+		"zero class":  func(rrset *RRset) { rrset.Class = 0 },
+		"zero type":   func(rrset *RRset) { rrset.Type = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			malformed := rrset
+			mutate(&malformed)
+			if err := VerifyRRset(malformed, []*dns.RRSIG{signature}, []*dns.DNSKEY{key}, at); err == nil {
+				t.Fatal("VerifyRRset() error = nil, want metadata error")
+			}
+		})
+	}
+}
+
 func TestVerifyRRsetRequiresExplicitTime(t *testing.T) {
 	rrset, signature, key := signedTestRRset(t, time.Now().UTC())
 	if err := VerifyRRset(rrset, []*dns.RRSIG{signature}, []*dns.DNSKEY{key}, time.Time{}); err == nil {

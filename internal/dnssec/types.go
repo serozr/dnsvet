@@ -44,6 +44,22 @@ type rrsetKey struct {
 	typ   uint16
 }
 
+func validateRRsetMetadata(rrset RRset) error {
+	if rrset.Name == "" {
+		return fmt.Errorf("RRset owner name must not be empty")
+	}
+	if _, ok := dns.IsDomainName(dns.Fqdn(rrset.Name)); !ok {
+		return fmt.Errorf("RRset owner name %q is invalid", rrset.Name)
+	}
+	if rrset.Class == 0 {
+		return fmt.Errorf("RRset class must not be zero")
+	}
+	if rrset.Type == 0 {
+		return fmt.Errorf("RRset type must not be zero")
+	}
+	return nil
+}
+
 func GroupRRsets(records []dns.RR) ([]RRset, error) {
 	if len(records) > MaxRRsetRecords {
 		return nil, fmt.Errorf("record count %d exceeds maximum %d", len(records), MaxRRsetRecords)
@@ -104,6 +120,9 @@ func canonicalRRKey(record dns.RR) string {
 }
 
 func SignaturesForRRset(rrset RRset, records []dns.RR) ([]*dns.RRSIG, error) {
+	if err := validateRRsetMetadata(rrset); err != nil {
+		return nil, err
+	}
 	if len(rrset.Records) == 0 {
 		return nil, fmt.Errorf("cannot collect signatures for an empty RRset")
 	}

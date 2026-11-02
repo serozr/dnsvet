@@ -25,6 +25,9 @@ func ValidateDelegationDS(
 	if parentZone == "" {
 		return nil, errors.New("parent zone is empty")
 	}
+	if err := validateRRsetMetadata(dsRRset); err != nil {
+		return nil, fmt.Errorf("invalid DS RRset metadata: %w", err)
+	}
 	if len(dsRRset.Records) == 0 {
 		return nil, errors.New("DS RRset is empty")
 	}

@@ -97,6 +97,20 @@ func TestSignaturesForRRsetRejectsEmptyRRset(t *testing.T) {
 	}
 }
 
+func TestSignaturesForRRsetRejectsInvalidMetadata(t *testing.T) {
+	for name, rrset := range map[string]RRset{
+		"empty owner": {Class: dns.ClassINET, Type: dns.TypeA, Records: []dns.RR{mustRR(t, "example.test. 60 IN A 192.0.2.1")}},
+		"zero class":  {Name: "example.test.", Type: dns.TypeA, Records: []dns.RR{mustRR(t, "example.test. 60 IN A 192.0.2.1")}},
+		"zero type":   {Name: "example.test.", Class: dns.ClassINET, Records: []dns.RR{mustRR(t, "example.test. 60 IN A 192.0.2.1")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := SignaturesForRRset(rrset, nil); err == nil {
+				t.Fatal("SignaturesForRRset() error = nil, want metadata error")
+			}
+		})
+	}
+}
+
 func TestGroupRRsetsRejectsExcessiveInput(t *testing.T) {
 	records := make([]dns.RR, MaxRRsetRecords+1)
 	if _, err := GroupRRsets(records); err == nil {

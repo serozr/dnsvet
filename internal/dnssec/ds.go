@@ -20,8 +20,17 @@ func MatchDNSKEYToDS(key *dns.DNSKEY, ds *dns.DS) (bool, error) {
 	if ds == nil {
 		return false, errors.New("DS is nil")
 	}
+	if key.Hdr.Rrtype != dns.TypeDNSKEY {
+		return false, fmt.Errorf("record type %d is not DNSKEY", key.Hdr.Rrtype)
+	}
+	if ds.Hdr.Rrtype != dns.TypeDS {
+		return false, fmt.Errorf("record type %d is not DS", ds.Hdr.Rrtype)
+	}
 	if key.Hdr.Name == "" || ds.Hdr.Name == "" {
 		return false, errors.New("DNSKEY and DS owner names must not be empty")
+	}
+	if key.Hdr.Class == 0 || ds.Hdr.Class == 0 {
+		return false, errors.New("DNSKEY and DS classes must not be zero")
 	}
 	if key.Protocol != 3 {
 		return false, fmt.Errorf("invalid DNSKEY protocol %d: want 3", key.Protocol)
