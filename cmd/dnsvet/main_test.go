@@ -280,6 +280,41 @@ func TestRunQueryJSONErrorsAreStructured(t *testing.T) {
 	}
 }
 
+func TestRunValidateHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"validate", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run validate --help code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "Usage: dnsvet validate") {
+		t.Fatalf("unexpected validate help: %s", stdout.String())
+	}
+}
+
+func TestRunValidateRejectsInvalidArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"validate"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("run validate missing domain code = %d, want 2", code)
+	}
+}
+
+func TestRunQueryTransportOptions(t *testing.T) {
+	options, err := parseQueryOptions([]string{"example.com", "--transport", "tls"})
+	if err != nil {
+		t.Fatalf("parseQueryOptions() error = %v", err)
+	}
+	if options.transport != "tls" {
+		t.Fatalf("expected transport tls, got %s", options.transport)
+	}
+
+	_, err = parseQueryOptions([]string{"example.com", "--transport", "unknown"})
+	if err == nil {
+		t.Fatal("expected error for unknown transport, got nil")
+	}
+}
+
+
 func TestRunQueryJSONNormalizesIDNAQuestionAndReportsElapsedMS(t *testing.T) {
 	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -316,3 +351,38 @@ func TestRunQueryJSONNormalizesIDNAQuestionAndReportsElapsedMS(t *testing.T) {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
+
+func TestRunValidateHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"validate", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run validate --help code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "Usage: dnsvet validate") {
+		t.Fatalf("unexpected validate help: %s", stdout.String())
+	}
+}
+
+func TestRunValidateRejectsInvalidArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"validate"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("run validate missing domain code = %d, want 2", code)
+	}
+}
+
+func TestRunQueryTransportOptions(t *testing.T) {
+	options, err := parseQueryOptions([]string{"example.com", "--transport", "tls"})
+	if err != nil {
+		t.Fatalf("parseQueryOptions() error = %v", err)
+	}
+	if options.transport != "tls" {
+		t.Fatalf("expected transport tls, got %s", options.transport)
+	}
+
+	_, err = parseQueryOptions([]string{"example.com", "--transport", "unknown"})
+	if err == nil {
+		t.Fatal("expected error for unknown transport, got nil")
+	}
+}
+

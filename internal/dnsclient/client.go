@@ -2,6 +2,7 @@ package dnsclient
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"strconv"
@@ -15,9 +16,20 @@ import (
 
 const defaultTimeout = 3 * time.Second
 
-// Client sends DNS queries over UDP and TCP.
+// Transport specifies the underlying network transport for DNS queries.
+type Transport string
+
+const (
+	TransportUDP   Transport = "udp"
+	TransportTCP   Transport = "tcp"
+	TransportTLS   Transport = "tls"   // DoT (DNS over TLS)
+	TransportHTTPS Transport = "https" // DoH (DNS over HTTPS)
+)
+
+// Client sends DNS queries over UDP, TCP, DoT, and DoH.
 type Client struct {
-	timeout time.Duration
+	timeout   time.Duration
+	tlsConfig *tls.Config
 }
 
 // New creates a DNS client. A non-positive timeout uses the default.
@@ -28,26 +40,35 @@ func New(timeout time.Duration) *Client {
 	return &Client{timeout: timeout}
 }
 
+// SetTLSConfig sets a custom TLS configuration for DoT and DoH.
+func (c *Client) SetTLSConfig(cfg *tls.Config) {
+	c.tlsConfig = cfg
+}
+
 // Query sends one DNS question and retries over TCP if the UDP response is truncated.
 func (c *Client) Query(ctx context.Context, server, name string, qtype uint16) (*dns.Msg, time.Duration, error) {
-	return c.query(ctx, server, name, qtype, false)
+	return c.QueryTransport(ctx, server, name, qtype, TransportUDP, false)
 }
 
 // QueryWithDNSSEC requests DNSSEC records by setting the EDNS DO bit.
 // It does not validate DNSSEC signatures or the chain of trust.
 func (c *Client) QueryWithDNSSEC(ctx context.Context, server, name string, qtype uint16) (*dns.Msg, time.Duration, error) {
-	return c.query(ctx, server, name, qtype, true)
+	return c.QueryTransport(ctx, server, name, qtype, TransportUDP, true)
 }
 
-func (c *Client) query(ctx context.Context, server, name string, qtype uint16, requestDNSSEC bool) (*dns.Msg, time.Duration, error) {
+// QueryTransport executes a query using the specified network transport.
+func (c *Client) QueryTransport(
+	ctx context.Context,
+	server string,
+	name string,
+	qtype uint16,
+	transport Transport,
+	requestDNSSEC bool,
+) (*dns.Msg, time.Duration, error) {
 	if ctx == nil {
 		return nil, 0, fmt.Errorf("query context must not be nil")
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, 0, err
-	}
-	resolver, err := NormalizeServer(server)
-	if err != nil {
 		return nil, 0, err
 	}
 	name = strings.TrimSpace(name)
@@ -66,35 +87,91 @@ func (c *Client) query(ctx context.Context, server, name string, qtype uint16, r
 	}
 	started := time.Now()
 
-	response, err := c.exchange(ctx, resolver, message, "udp")
-	if err != nil {
-		return nil, time.Since(started), fmt.Errorf("DNS UDP query to %s failed: %w", resolver, err)
-	}
-	if response == nil {
-		return nil, time.Since(started), fmt.Errorf("DNS UDP query to %s returned an empty response", resolver)
-	}
-	if response.Truncated {
-		if err := ctx.Err(); err != nil {
-			return nil, time.Since(started), err
+	var response *dns.Msg
+	switch transport {
+	case TransportTLS:
+		dotAddr, serverName, err := NormalizeDoTServer(server)
+		if err != nil {
+			return nil, 0, err
+		}
+		response, err = c.exchangeDoT(ctx, dotAddr, serverName, message)
+		if err != nil {
+			return nil, time.Since(started), fmt.Errorf("DoT query to %s failed: %w", dotAddr, err)
+		}
+	case TransportHTTPS:
+		response, err = c.exchangeDoH(ctx, server, message)
+		if err != nil {
+			return nil, time.Since(started), fmt.Errorf("DoH query to %s failed: %w", server, err)
+		}
+	case TransportTCP:
+		resolver, err := NormalizeServer(server)
+		if err != nil {
+			return nil, 0, err
 		}
 		response, err = c.exchange(ctx, resolver, message, "tcp")
 		if err != nil {
-			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s failed: %w", resolver, err)
+			return nil, time.Since(started), fmt.Errorf("DNS TCP query to %s failed: %w", resolver, err)
 		}
-		if response == nil {
-			return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s returned an empty response", resolver)
+	default: // TransportUDP
+		resolver, err := NormalizeServer(server)
+		if err != nil {
+			return nil, 0, err
 		}
+		response, err = c.exchange(ctx, resolver, message, "udp")
+		if err != nil {
+			return nil, time.Since(started), fmt.Errorf("DNS UDP query to %s failed: %w", resolver, err)
+		}
+		if response != nil && response.Truncated {
+			if err := ctx.Err(); err != nil {
+				return nil, time.Since(started), err
+			}
+			response, err = c.exchange(ctx, resolver, message, "tcp")
+			if err != nil {
+				return nil, time.Since(started), fmt.Errorf("DNS TCP fallback to %s failed: %w", resolver, err)
+			}
+		}
+	}
+
+	if response == nil {
+		return nil, time.Since(started), fmt.Errorf("DNS query returned an empty response")
 	}
 	if response.Opcode != message.Opcode {
 		return nil, time.Since(started), fmt.Errorf("DNS response opcode %d does not match request opcode %d", response.Opcode, message.Opcode)
 	}
 	if response.Truncated {
-		return nil, time.Since(started), fmt.Errorf("DNS response from %s is still truncated after TCP fallback", resolver)
+		return nil, time.Since(started), fmt.Errorf("DNS response from %s is still truncated after TCP fallback", server)
 	}
 	if err := validateResponseQuestion(response, message.Question[0]); err != nil {
 		return nil, time.Since(started), err
 	}
 	return response, time.Since(started), nil
+}
+
+func (c *Client) query(ctx context.Context, server, name string, qtype uint16, requestDNSSEC bool) (*dns.Msg, time.Duration, error) {
+	return c.QueryTransport(ctx, server, name, qtype, TransportUDP, requestDNSSEC)
+}
+
+// BoundClient wraps Client with a fixed resolver endpoint, implementing the
+// Resolver interface needed by validation orchestrators.
+type BoundClient struct {
+	client    *Client
+	resolver  string
+	transport Transport
+}
+
+// Bound returns a BoundClient that directs all queries to the specified resolver and transport.
+func (c *Client) Bound(resolver string, transport Transport) *BoundClient {
+	return &BoundClient{
+		client:    c,
+		resolver:  resolver,
+		transport: transport,
+	}
+}
+
+// Query sends a DNSSEC-enabled query to the bound resolver.
+func (b *BoundClient) Query(ctx context.Context, name string, qtype uint16) (*dns.Msg, error) {
+	resp, _, err := b.client.QueryTransport(ctx, b.resolver, name, qtype, b.transport, true)
+	return resp, err
 }
 
 func (c *Client) exchange(ctx context.Context, resolver string, message *dns.Msg, network string) (*dns.Msg, error) {

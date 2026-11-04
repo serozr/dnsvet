@@ -359,3 +359,103 @@ func TestValidateChainAcceptsMultipleTrustAnchorsEndToEnd(t *testing.T) {
 		t.Fatalf("authenticated keys = %d, want both configured DNSKEYs", len(result.Keys))
 	}
 }
+
+func TestValidateChainRejectsNonChildDelegation(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
+	anchorSet := RRset{
+		Name:    "example.test.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
+	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
+
+	unrelatedKey, unrelatedSigner := makeSigningKey(t, "unrelated.org.")
+	unrelatedSet := RRset{
+		Name:    "unrelated.org.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDNSKEY,
+		Records: []dns.RR{unrelatedKey},
+	}
+	unrelatedSig := signTestRRset(t, unrelatedSet, unrelatedKey, unrelatedSigner, at)
+	unrelatedDSSet := RRset{
+		Name:    "unrelated.org.",
+		Class:   dns.ClassINET,
+		Type:    dns.TypeDS,
+		Records: []dns.RR{unrelatedKey.ToDS(dns.SHA256)},
+	}
+	unrelatedDSSig := signTestRRset(t, unrelatedDSSet, anchorKey, anchorSigner, at)
+
+	_, err := ValidateChain(
+		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
+		anchorSet,
+		[]*dns.RRSIG{anchorSig},
+		[]Delegation{{
+			DSRRset:          unrelatedDSSet,
+			DSSignatures:     []*dns.RRSIG{unrelatedDSSig},
+			DNSKEYRRset:      unrelatedSet,
+			DNSKEYSignatures: []*dns.RRSIG{unrelatedSig},
+		}},
+		at,
+	)
+	if err == nil {
+		t.Fatal("ValidateChain() error = nil, want rejection of non-child delegation")
+	}
+}
+
+func TestValidateChainRejectsOutOfOrderDelegationSequence(t *testing.T) {
+	at := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+
+	anchorKey, anchorSigner := makeSigningKey(t, "example.test.")
+	anchorSet := RRset{
+		Name: "example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{anchorKey},
+	}
+	anchorSig := signTestRRset(t, anchorSet, anchorKey, anchorSigner, at)
+
+	childKey, childSigner := makeSigningKey(t, "child.example.test.")
+	childSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{childKey},
+	}
+	childSig := signTestRRset(t, childSet, childKey, childSigner, at)
+	childDSSet := RRset{
+		Name: "child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{childKey.ToDS(dns.SHA256)},
+	}
+	childDSSig := signTestRRset(t, childDSSet, anchorKey, anchorSigner, at)
+
+	grandchildKey, grandchildSigner := makeSigningKey(t, "grandchild.child.example.test.")
+	grandchildSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDNSKEY,
+		Records: []dns.RR{grandchildKey},
+	}
+	grandchildSig := signTestRRset(t, grandchildSet, grandchildKey, grandchildSigner, at)
+	grandchildDSSet := RRset{
+		Name: "grandchild.child.example.test.", Class: dns.ClassINET, Type: dns.TypeDS,
+		Records: []dns.RR{grandchildKey.ToDS(dns.SHA256)},
+	}
+	grandchildDSSig := signTestRRset(t, grandchildDSSet, childKey, childSigner, at)
+
+	// Inverted order: grandchild passed first, then child
+	_, err := ValidateChain(
+		TrustAnchor{Zone: "example.test.", DNSKEY: anchorKey},
+		anchorSet,
+		[]*dns.RRSIG{anchorSig},
+		[]Delegation{
+			{
+				DSRRset: grandchildDSSet, DSSignatures: []*dns.RRSIG{grandchildDSSig},
+				DNSKEYRRset: grandchildSet, DNSKEYSignatures: []*dns.RRSIG{grandchildSig},
+			},
+			{
+				DSRRset: childDSSet, DSSignatures: []*dns.RRSIG{childDSSig},
+				DNSKEYRRset: childSet, DNSKEYSignatures: []*dns.RRSIG{childSig},
+			},
+		},
+		at,
+	)
+	if err == nil {
+		t.Fatal("ValidateChain() error = nil, want rejection for inverted delegation order")
+	}
+}

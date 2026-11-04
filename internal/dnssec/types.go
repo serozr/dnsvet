@@ -17,9 +17,13 @@ const (
 )
 
 type Result struct {
-	Status Status
-	Reason string
-	Zone   string
+	Status       Status
+	Reason       string
+	Zone         string
+	TrustAnchor  string
+	ProofType    string
+	Wildcard     bool
+	SecureRRsets []RRset
 }
 
 type RRset struct {
