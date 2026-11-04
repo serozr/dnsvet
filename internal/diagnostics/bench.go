@@ -73,12 +73,12 @@ func BenchmarkResolver(
 			sum += ms
 		}
 
-		// Rate pacing: small delay between samples to prevent flooding (max 20 QPS)
+		// Rate pacing: keep benchmark traffic at or below 10 queries per second.
 		if i < count-1 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(50 * time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}
