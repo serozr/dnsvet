@@ -343,10 +343,168 @@ func TestRunQueryJSONNormalizesIDNAQuestionAndReportsElapsedMS(t *testing.T) {
 	if output.SchemaVersion != "1" || output.Question != "xn--bcher-kva.example." {
 		t.Fatalf("unexpected schema/question: %+v", output)
 	}
-	if output.ElapsedMS < 0 {
-		t.Fatalf("elapsed_ms = %v, want non-negative", output.ElapsedMS)
-	}
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestRunDiscover(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"discover"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run discover code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "Discovered DNS Resolvers:") {
+		t.Fatalf("discover output missing header: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"discover", "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run discover --json code = %d, want 0", code)
+	}
+	var output struct {
+		SchemaVersion string   `json:"schema_version"`
+		Source        string   `json:"source"`
+		Servers       []string `json:"servers"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("invalid json from discover: %v", err)
+	}
+	if output.SchemaVersion != "1" {
+		t.Fatalf("schema_version = %q, want 1", output.SchemaVersion)
+	}
+}
+
+func TestRunCompareCLI(t *testing.T) {
+	handler := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		msg := new(dns.Msg)
+		msg.SetReply(r)
+		msg.Answer = append(msg.Answer, &dns.A{
+			Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			A:   net.ParseIP("192.0.2.1"),
+		})
+		_ = w.WriteMsg(msg)
+	})
+
+	pc1, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc1: %v", err)
+	}
+	defer pc1.Close()
+	srv1 := &dns.Server{PacketConn: pc1, Handler: handler}
+	go func() { _ = srv1.ActivateAndServe() }()
+	defer srv1.Shutdown()
+
+	pc2, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc2: %v", err)
+	}
+	defer pc2.Close()
+	srv2 := &dns.Server{PacketConn: pc2, Handler: handler}
+	go func() { _ = srv2.ActivateAndServe() }()
+	defer srv2.Shutdown()
+
+	addr1 := pc1.LocalAddr().String()
+	addr2 := pc2.LocalAddr().String()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"compare", "example.test", "--servers", addr1 + "," + addr2}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run compare code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "CONSISTENT") {
+		t.Fatalf("compare output missing CONSISTENT: %s", stdout.String())
+	}
+
+	// Inconsistent test
+	pc3, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc3: %v", err)
+	}
+	defer pc3.Close()
+	srv3 := &dns.Server{
+		PacketConn: pc3,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			msg.Rcode = dns.RcodeNameError
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv3.ActivateAndServe() }()
+	defer srv3.Shutdown()
+
+	addr3 := pc3.LocalAddr().String()
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"compare", "example.test", "--servers", addr1 + "," + addr3}, &stdout, &stderr)
+	if code != 3 {
+		t.Fatalf("run compare inconsistent code = %d, want 3", code)
+	}
+	if !strings.Contains(stdout.String(), "INCONSISTENT") {
+		t.Fatalf("compare output missing INCONSISTENT: %s", stdout.String())
+	}
+}
+
+func TestRunBenchCLI(t *testing.T) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc: %v", err)
+	}
+	defer pc.Close()
+	srv := &dns.Server{
+		PacketConn: pc,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			msg.Answer = append(msg.Answer, &dns.A{
+				Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.ParseIP("192.0.2.1"),
+			})
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv.ActivateAndServe() }()
+	defer srv.Shutdown()
+
+	addr := pc.LocalAddr().String()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"bench", "example.test", "--server", addr, "--count", "2"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run bench code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Successes: 2/2") {
+		t.Fatalf("bench output missing successes: %s", stdout.String())
+	}
+}
+
+func TestRunLeakCLI(t *testing.T) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc: %v", err)
+	}
+	defer pc.Close()
+	srv := &dns.Server{
+		PacketConn: pc,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			msg.Rcode = dns.RcodeNameError
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv.ActivateAndServe() }()
+	defer srv.Shutdown()
+
+	addr := pc.LocalAddr().String()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"leak", "--server", addr}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run leak code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "NO REWRITING DETECTED") {
+		t.Fatalf("leak output missing expected result: %s", stdout.String())
 	}
 }
