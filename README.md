@@ -18,7 +18,7 @@ go install github.com/serozr/dnsvet/cmd/dnsvet@latest
 ```
 
 #### Build from source
-Requires Go 1.27.3 or later:
+Requires Go 1.26.0 or later:
 ```bash
 git clone https://github.com/serozr/dnsvet.git
 cd dnsvet

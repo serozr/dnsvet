@@ -25,11 +25,14 @@ type ResolverResponse struct {
 
 // ComparisonResult summarizes the consistency across all queried resolvers.
 type ComparisonResult struct {
-	Domain        string             `json:"domain"`
-	Type          string             `json:"type"`
-	Consistent    bool               `json:"consistent"`
-	Discrepancies []string           `json:"discrepancies,omitempty"`
-	Responses     []ResolverResponse `json:"responses"`
+	Domain         string             `json:"domain"`
+	Type           string             `json:"type"`
+	Consistent     bool               `json:"consistent"`
+	Classification string             `json:"classification"` // "consistent", "inconsistent", "likely_geo_or_load_balanced"
+	Reason         string             `json:"reason,omitempty"`
+	Strict         bool               `json:"strict,omitempty"`
+	Discrepancies  []string           `json:"discrepancies,omitempty"`
+	Responses      []ResolverResponse `json:"responses"`
 }
 
 // CompareResolvers queries multiple resolvers for domain and qtype under controlled conditions,
@@ -40,6 +43,7 @@ func CompareResolvers(
 	resolvers []string,
 	domain string,
 	qtype uint16,
+	strict bool,
 ) (*ComparisonResult, error) {
 	if len(resolvers) == 0 {
 		return nil, fmt.Errorf("at least one resolver is required for comparison")
@@ -51,6 +55,7 @@ func CompareResolvers(
 	result := &ComparisonResult{
 		Domain:    domain,
 		Type:      dns.TypeToString[qtype],
+		Strict:    strict,
 		Responses: make([]ResolverResponse, len(resolvers)),
 	}
 
@@ -95,12 +100,18 @@ func CompareResolvers(
 	var baseAnswers []string
 	baseRcode := -1
 	firstSuccess := false
+	allNoerrorWithAnswers := true
+	answerSetsDiffer := false
 
 	for _, r := range result.Responses {
 		if r.Error != "" {
 			result.Consistent = false
+			allNoerrorWithAnswers = false
 			result.Discrepancies = append(result.Discrepancies, fmt.Sprintf("resolver %s failed: %s", r.Resolver, r.Error))
 			continue
+		}
+		if r.RCode != dns.RcodeSuccess || len(r.Answers) == 0 {
+			allNoerrorWithAnswers = false
 		}
 		if !firstSuccess {
 			firstSuccess = true
@@ -114,12 +125,48 @@ func CompareResolvers(
 				r.Resolver, r.Response, r.RCode, dns.RcodeToString[baseRcode], baseRcode))
 		}
 		if !equalStringSlices(r.Answers, baseAnswers) {
-			result.Consistent = false
+			answerSetsDiffer = true
 			result.Discrepancies = append(result.Discrepancies, fmt.Sprintf("answer mismatch between %s and baseline: got %v, want %v",
 				r.Resolver, r.Answers, baseAnswers))
 		}
 	}
 
+	if len(result.Discrepancies) == 0 {
+		result.Classification = "consistent"
+		result.Consistent = true
+		result.Reason = "all resolvers returned identical answers"
+		return result, nil
+	}
+
+	// If the only differences are answer IPs for A/AAAA and all resolvers answered NOERROR:
+	isAddressQuery := qtype == dns.TypeA || qtype == dns.TypeAAAA
+	if allNoerrorWithAnswers && isAddressQuery && answerSetsDiffer && len(result.Discrepancies) > 0 {
+		// Check that there were no RCODE mismatches or query failures
+		allRcodesMatch := true
+		for _, r := range result.Responses {
+			if r.RCode != dns.RcodeSuccess || r.Error != "" {
+				allRcodesMatch = false
+				break
+			}
+		}
+
+		if allRcodesMatch {
+			if strict {
+				result.Classification = "inconsistent"
+				result.Consistent = false
+				result.Reason = "differing IP answers observed and --strict comparison was requested"
+			} else {
+				result.Classification = "likely_geo_or_load_balanced"
+				result.Consistent = true
+				result.Reason = "all resolvers returned successful answers with differing IP sets, typical for CDN or GeoDNS routing"
+			}
+			return result, nil
+		}
+	}
+
+	result.Classification = "inconsistent"
+	result.Consistent = false
+	result.Reason = "discrepancies detected across resolver answers"
 	return result, nil
 }
 

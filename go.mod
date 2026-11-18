@@ -1,6 +1,6 @@
 module github.com/serozr/dnsvet
 
-go 1.27.3
+go 1.26.0
 
 require (
 	github.com/miekg/dns v1.1.63

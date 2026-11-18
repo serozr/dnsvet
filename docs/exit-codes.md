@@ -11,8 +11,9 @@ dnsvet process exit codes provide deterministic signals for shell scripts, autom
 | **0** | **Success / Clean** | Command completed successfully with normal operational outcome and no security/integrity findings. |
 | **1** | **Operational Failure** | Network timeout, unreachable resolver, socket error, or server query error. |
 | **2** | **Usage Error** | Invalid command-line arguments, unknown flags, unsupported types/transports, or syntax errors. |
-| **3** | **Diagnostic Finding** | Diagnostic check detected an anomaly or tampering indicator. |
+| **3** | **Diagnostic Finding / Insecure** | Authenticated insecure delegation, or diagnostic anomaly / tampering indicator found. |
 | **4** | **Indeterminate** | Evaluation was inconclusive due to missing proof material or unsupported algorithms. |
+| **5** | **Bogus / Integrity Failure** | DNSSEC cryptographic validation failed, forged records, or missing mandatory proof. |
 
 ---
 
@@ -23,17 +24,13 @@ dnsvet process exit codes provide deterministic signals for shell scripts, autom
 - **1**: Resolver network timeout, connection refused, or invalid server address.
 - **2**: Argument syntax error, unsupported record type, or invalid duration.
 
-### `validate` *(Current Contract & Phase 2 Roadmap)*
-Current behavior:
+### `validate`
 - **0**: DNSSEC validation status is **Secure** (cryptographic chain of trust verified to trust anchor).
 - **1**: Network or operational error querying DS/DNSKEY records during chain traversal.
 - **2**: Missing domain argument, unparseable trust anchor file, or invalid options.
-- **3**: Validation status is **Insecure** (authenticated unsigned delegation) or **Bogus** (validation failed / forged).
-- **4**: Validation status is **Indeterminate** (unsupported algorithm, missing signatures, or inconclusive proof).
-
-*Planned in Phase 2:*
-- **3**: **Insecure** (zone is legitimately unsigned, proof of no DS verified).
-- **5**: **Bogus** (cryptographic signature verification failed, digest mismatch, or unverifiable delegation).
+- **3**: Validation status is **Insecure** (authenticated unsigned delegation proven via NSEC/NSEC3 Opt-Out).
+- **4**: Validation status is **Indeterminate** (unsupported algorithm or inconclusive proof).
+- **5**: Validation status is **Bogus** (signature verification failure, expired signature, digest mismatch, or unverifiable delegation).
 
 ### `compare`
 - **0**: All queried resolvers returned **Consistent** answers.

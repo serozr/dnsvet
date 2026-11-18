@@ -3,13 +3,73 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/serozr/dnsvet/internal/cli"
+	"github.com/serozr/dnsvet/internal/dnsclient"
 )
+
+func run(args []string, stdout, stderr io.Writer) int {
+	return cli.Run(args, stdout, stderr)
+}
+
+type queryOptions struct {
+	server    string
+	qtype     uint16
+	timeout   time.Duration
+	domain    string
+	transport dnsclient.Transport
+	json      bool
+	dnssec    bool
+}
+
+func parseQueryOptions(args []string) (queryOptions, error) {
+	opts, err := cli.ParseQueryOptions(args)
+	return queryOptions{
+		server:    opts.Server,
+		qtype:     opts.Qtype,
+		timeout:   opts.Timeout,
+		domain:    opts.Domain,
+		transport: opts.Transport,
+		json:      opts.JSON,
+		dnssec:    opts.DNSSEC,
+	}, err
+}
+
+func formatAnswer(record dns.RR) string {
+	return cli.FormatAnswer(record)
+}
+
+type queryJSONOutput struct {
+	SchemaVersion   string   `json:"schema_version"`
+	Transport       string   `json:"transport,omitempty"`
+	Resolver        string   `json:"resolver"`
+	Question        string   `json:"question"`
+	Type            string   `json:"type"`
+	Response        string   `json:"response"`
+	RCode           int      `json:"rcode"`
+	Elapsed         string   `json:"elapsed"`
+	ElapsedMS       float64  `json:"elapsed_ms"`
+	Answers         []string `json:"answers"`
+	DNSSECRequested bool     `json:"dnssec_requested"`
+	Authenticated   bool     `json:"authenticated_data"`
+	LocalValidation string   `json:"local_validation,omitempty"`
+}
+
+type queryJSONError struct {
+	SchemaVersion string          `json:"schema_version"`
+	Error         queryJSONDetail `json:"error"`
+}
+
+type queryJSONDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
 
 func TestRunHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
@@ -506,5 +566,153 @@ func TestRunLeakCLI(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "NO REWRITING DETECTED") {
 		t.Fatalf("leak output missing expected result: %s", stdout.String())
+	}
+}
+
+func TestRunCompareGeoDNSCLI(t *testing.T) {
+	pc1, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc1: %v", err)
+	}
+	defer pc1.Close()
+	srv1 := &dns.Server{
+		PacketConn: pc1,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			msg.Answer = append(msg.Answer, &dns.A{
+				Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.ParseIP("192.0.2.1"),
+			})
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv1.ActivateAndServe() }()
+	defer srv1.Shutdown()
+
+	pc2, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc2: %v", err)
+	}
+	defer pc2.Close()
+	srv2 := &dns.Server{
+		PacketConn: pc2,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			msg.Answer = append(msg.Answer, &dns.A{
+				Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 120},
+				A:   net.ParseIP("198.51.100.1"),
+			})
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv2.ActivateAndServe() }()
+	defer srv2.Shutdown()
+
+	addr1 := pc1.LocalAddr().String()
+	addr2 := pc2.LocalAddr().String()
+
+	// Default without --strict: GeoDNS heuristic -> exit 0
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"compare", "cdn.example.test", "--servers", addr1 + "," + addr2}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run compare GeoDNS default code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "LIKELY GEO-DNS") {
+		t.Fatalf("expected GeoDNS output, got: %s", stdout.String())
+	}
+
+	// Strict mode with --strict: exact set required -> exit 3
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"compare", "cdn.example.test", "--servers", addr1 + "," + addr2, "--strict"}, &stdout, &stderr)
+	if code != 3 {
+		t.Fatalf("run compare GeoDNS --strict code = %d, want 3", code)
+	}
+	if !strings.Contains(stdout.String(), "INCONSISTENT") {
+		t.Fatalf("expected INCONSISTENT output with --strict, got: %s", stdout.String())
+	}
+}
+
+func TestRunInputHardening(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Timeout > 60s rejected across compare, bench, leak
+	if code := run([]string{"compare", "example.test", "--timeout", "65s"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("compare timeout > 60s exit code = %d, want 2", code)
+	}
+	if code := run([]string{"bench", "example.test", "--timeout", "65s"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("bench timeout > 60s exit code = %d, want 2", code)
+	}
+	if code := run([]string{"leak", "--timeout", "65s"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("leak timeout > 60s exit code = %d, want 2", code)
+	}
+
+	// Unsupported record types rejected in compare and bench
+	if code := run([]string{"compare", "example.test", "--type", "AXFR"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("compare type AXFR exit code = %d, want 2", code)
+	}
+	if code := run([]string{"bench", "example.test", "--type", "UNKNOWN"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("bench type UNKNOWN exit code = %d, want 2", code)
+	}
+
+	// Empty / invalid server addresses rejected
+	if code := run([]string{"compare", "example.test", "--servers", ""}, &stdout, &stderr); code != 2 {
+		t.Fatalf("compare empty servers exit code = %d, want 2", code)
+	}
+	if code := run([]string{"bench", "example.test", "--server", ""}, &stdout, &stderr); code != 2 {
+		t.Fatalf("bench empty server exit code = %d, want 2", code)
+	}
+	if code := run([]string{"leak", "--server", ""}, &stdout, &stderr); code != 2 {
+		t.Fatalf("leak empty server exit code = %d, want 2", code)
+	}
+}
+
+func TestRunValidateExitCodes(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Exit code 2: Usage error / missing domain
+	code := run([]string{"validate"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("run validate with no domain exit code = %d, want 2", code)
+	}
+
+	// Exit code 1: Unreachable server
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"validate", "example.test", "--server", "127.0.0.1:1", "--timeout", "100ms"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("run validate unreachable server exit code = %d, want 1", code)
+	}
+
+	// Exit code 5: Bogus (server returns unsigned answers with missing/tampered trust anchor keys)
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen pc: %v", err)
+	}
+	defer pc.Close()
+	srv := &dns.Server{
+		PacketConn: pc,
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+			msg := new(dns.Msg)
+			msg.SetReply(r)
+			if r.Question[0].Qtype == dns.TypeA {
+				msg.Answer = append(msg.Answer, &dns.A{
+					Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+					A:   net.ParseIP("192.0.2.1"),
+				})
+			}
+			_ = w.WriteMsg(msg)
+		}),
+	}
+	go func() { _ = srv.ActivateAndServe() }()
+	defer srv.Shutdown()
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"validate", "example.test", "--server", pc.LocalAddr().String(), "--timeout", "500ms"}, &stdout, &stderr)
+	if code != 5 {
+		t.Fatalf("run validate bogus exit code = %d, want 5 (Bogus); stdout: %s, stderr: %s", code, stdout.String(), stderr.String())
 	}
 }

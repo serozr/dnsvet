@@ -51,13 +51,13 @@ func TestCompareResolversConsistent(t *testing.T) {
 	defer cleanup2()
 
 	client := dnsclient.New(2 * time.Second)
-	res, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "example.com", dns.TypeA)
+	res, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "example.com", dns.TypeA, false)
 	if err != nil {
 		t.Fatalf("CompareResolvers() error = %v", err)
 	}
 
-	if !res.Consistent {
-		t.Fatalf("expected consistent result, got discrepancies: %v", res.Discrepancies)
+	if !res.Consistent || res.Classification != "consistent" {
+		t.Fatalf("expected consistent result, got classification: %s, discrepancies: %v", res.Classification, res.Discrepancies)
 	}
 	if len(res.Responses) != 2 {
 		t.Fatalf("expected 2 responses, got %d", len(res.Responses))
@@ -88,16 +88,62 @@ func TestCompareResolversInconsistent(t *testing.T) {
 	defer cleanup2()
 
 	client := dnsclient.New(2 * time.Second)
-	res, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "example.com", dns.TypeA)
+	res, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "example.com", dns.TypeA, false)
 	if err != nil {
 		t.Fatalf("CompareResolvers() error = %v", err)
 	}
 
-	if res.Consistent {
+	if res.Consistent || res.Classification != "inconsistent" {
 		t.Fatal("expected inconsistent result between answering server and NXDOMAIN server")
 	}
 	if len(res.Discrepancies) == 0 {
 		t.Fatal("expected recorded discrepancies")
+	}
+}
+
+func TestCompareResolversGeoDNSHeuristic(t *testing.T) {
+	handler1 := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		msg := new(dns.Msg)
+		msg.SetReply(r)
+		msg.Answer = append(msg.Answer, &dns.A{
+			Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.ParseIP("192.0.2.1"),
+		})
+		_ = w.WriteMsg(msg)
+	})
+
+	handler2 := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		msg := new(dns.Msg)
+		msg.SetReply(r)
+		msg.Answer = append(msg.Answer, &dns.A{
+			Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 120},
+			A:   net.ParseIP("198.51.100.1"),
+		})
+		_ = w.WriteMsg(msg)
+	})
+
+	srv1, cleanup1 := startLocalDNSServer(t, handler1)
+	defer cleanup1()
+	srv2, cleanup2 := startLocalDNSServer(t, handler2)
+	defer cleanup2()
+
+	client := dnsclient.New(2 * time.Second)
+	// Default (strict=false): should classify as likely_geo_or_load_balanced and Consistent=true
+	resNonStrict, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "cdn.example.test", dns.TypeA, false)
+	if err != nil {
+		t.Fatalf("CompareResolvers() error = %v", err)
+	}
+	if !resNonStrict.Consistent || resNonStrict.Classification != "likely_geo_or_load_balanced" {
+		t.Fatalf("expected likely_geo_or_load_balanced, got classification=%s, consistent=%v", resNonStrict.Classification, resNonStrict.Consistent)
+	}
+
+	// Strict mode (strict=true): should classify as inconsistent and Consistent=false
+	resStrict, err := CompareResolvers(context.Background(), client, []string{srv1, srv2}, "cdn.example.test", dns.TypeA, true)
+	if err != nil {
+		t.Fatalf("CompareResolvers() strict error = %v", err)
+	}
+	if resStrict.Consistent || resStrict.Classification != "inconsistent" {
+		t.Fatalf("expected inconsistent with strict=true, got classification=%s, consistent=%v", resStrict.Classification, resStrict.Consistent)
 	}
 }
 

@@ -110,9 +110,13 @@ dnsvet compare <domain> [options]
 |---|---|---|---|
 | `--servers <list>` | `-s` | *(OS discovered, or 1.1.1.1,8.8.8.8,9.9.9.9)* | Comma-separated list of resolver addresses. |
 | `--type <record>` | `-t` | `A` | DNS record type to query across resolvers. |
-| `--timeout <duration>` | | `3s` | Timeout per resolver query. |
+| `--timeout <duration>` | | `3s` | Timeout per resolver query (max `60s`). |
+| `--strict` | | `false` | Force strict exact set comparison for A/AAAA records (disables GeoDNS/CDN tolerance). |
 | `--json` | | `false` | Output structured JSON (`schema_version: "1"`). |
 | `--help` | `-h` | | Show usage information. |
+
+### GeoDNS / CDN Classification
+When comparing `A` or `AAAA` records, different resolvers may return different IP addresses due to GeoDNS or CDN anycast load balancing. If all resolvers respond with `NOERROR` and return valid IP sets, `dnsvet compare` classifies this as `likely_geo_or_load_balanced` and exits cleanly (0). Passing `--strict` enforces an exact matching IP set, reporting discrepancies and exiting with code 3.
 
 ---
 
